@@ -1,0 +1,192 @@
+1. Arquitectura del Sistema
+La aplicación seguirá un modelo SPA (Single Page Application) para la interfaz y una API RESTful para el backend, garantizando fluidez y rapidez.
+•	Frontend: React.js o Vue.js con Tailwind CSS (estética limpia, minimalista y profesional).
+•	Backend: Node.js (NestJS) o Python (FastAPI).
+•	Base de Datos: PostgreSQL para asegurar la integridad de las agendas y relaciones.
+________________________________________
+2. Modelado de Datos y Parametrización
+El núcleo del sistema reside en la configuración previa. Se estructurará en cuatro módulos maestros:
+A. Gestión de Técnicos
+Panel para administrar el equipo asistencial.
+•	Atributos: ID, Nombre, Apellidos, Email (Unique), Especialidad, Foto de perfil, Centro/Sala base.
+B. Gestión de Centros/Salas
+Definición física de los puntos de atención.
+•	Atributos: ID, Nombre, Dirección, Capacidad, Estado (Activo/Inactivo).
+•	Calendario Base: Definición de la disponibilidad estructural del centro (ej. Lunes a Viernes de 09:00 a 20:00).
+C. Tipos de Visita
+Catálogo de servicios ofrecidos.
+•	Atributos: ID, Nombre (ej. "Primera Consulta", "Seguimiento"), Descripción, Duración (minutos), Color de etiqueta.
+D. Planificación Inteligente (Generador de Agendas)
+Este es el motor de la aplicación. Permite poblar el calendario de forma masiva mediante una regla de negocio dinámica.
+•	Parámetros de entrada:
+o	Rango: Fecha_Desde hasta Fecha_Hasta.
+o	Recurrencia: Días de la semana (L, M, X, J, V, S, D).
+o	Franja Horaria: Hora_Inicio y Hora_Fin.
+o	Frecuencia: Intervalo (ej. 30 min).
+o	Asignación: Técnico + Centro/Sala.
+________________________________________
+3. Experiencia del Paciente (Booking Engine)
+Inspirado en Amelia, el proceso de reserva será un flujo guiado:
+1.	Identificación/Registro: Login simple o registro rápido para nuevos pacientes.
+2.	Pre-selección Automática: El sistema detecta el técnico y centro asignado al perfil del paciente para filtrar la agenda.
+3.	Selección de Servicio: El paciente elige el tipo de visita.
+4.	Calendario Visual: Muestra solo huecos libres resultantes del cruce entre la "Planificación del Centro" y las citas ya ocupadas.
+5.	Confirmación: Envío automático de email y creación de evento en el calendario.
+________________________________________
+4. Requerimientos Funcionales y Lógica de Negocio
+Módulo	Funcionalidad Clave
+Seguridad	Autenticación basada en roles (Admin, Técnico, Paciente).
+Validación	El sistema impedirá asignar a un técnico en dos centros distintos en la misma franja horaria.
+Sincronización	Actualización en tiempo real de los huecos disponibles (WebSockets).
+Perfil Paciente	Cada paciente tiene vinculado un ID_Técnico y ID_Centro preferencial para agilizar su reserva.
+Exportar a Hojas de cálculo
+________________________________________
+5. Interfaz de Usuario (UI/UX)
+Para lograr ese look & feel "Amelia":
+•	Dashboard Administrativo: Uso de un calendario tipo Drag-and-Drop para mover citas entre técnicos.
+•	Diseño Limpio: Uso extensivo de espacios en blanco, tipografía sans-serif (Inter o Montserrat) y esquinas redondeadas.
+•	Componentes:
+o	Steppers para el registro de citas.
+o	Modales para la edición rápida de horarios.
+o	Filtros rápidos por técnico o sala en la vista de administración.
+________________________________________
+6. Siguientes Pasos
+Para avanzar con el desarrollo, lo ideal sería definir el modelo de base de datos detallado.
+¿Te gustaría que diseñe el esquema de tablas de la base de datos (Entidad-Relación) para este sistema?
+
+Para que la aplicación funcione con la lógica de centros, técnicos y planificación recurrente que mencionas (estilo Amelia), el modelo de base de datos debe ser relacional.
+Aquí tienes el diseño del esquema de base de datos (PostgreSQL/MySQL) con sus relaciones principales:
+________________________________________
+1. Entidades de Configuración (Maestros)
+Tabla: centros_salas
+Define los espacios físicos.
+•	id (PK)
+•	nombre (Ej: "Sala A - Madrid", "Centro Norte")
+•	direccion
+•	capacidad (Por defecto 1)
+•	activo (Boolean)
+Tabla: tecnicos
+Perfil de los profesionales.
+•	id (PK)
+•	nombre
+•	apellidos
+•	email (Unique)
+•	especialidad
+•	password_hash (Para login)
+Tabla: tipos_visita
+Catálogo de servicios.
+•	id (PK)
+•	nombre (Ej: "Primera consulta", "Seguimiento")
+•	descripcion
+•	duracion_minutos (Ej: 30, 60)
+•	color_hex (Para el calendario visual)
+________________________________________
+2. Entidad de Usuarios (Pacientes)
+Tabla: pacientes
+•	id (PK)
+•	nombre
+•	apellidos
+•	email (Unique)
+•	telefono
+•	tecnico_asignado_id (FK -> tecnicos) - Preferencia del paciente
+•	centro_asignado_id (FK -> centros_salas) - Preferencia del paciente
+________________________________________
+3. El Motor de Planificación (Disponibilidad)
+Para gestionar la "Planificación Centro/Sala" que mencionas (rangos de fechas y horas), usaremos una tabla que almacene las reglas de generación y otra que contenga los "huecos" reales.
+Tabla: planificacion_reglas
+Aquí se guarda lo que el admin parametriza en la pantalla de "Planificación Genérica".
+•	id (PK)
+•	centro_id (FK)
+•	tecnico_id (FK)
+•	fecha_desde (Date)
+•	fecha_hasta (Date)
+•	dias_semana (Array o String: "L,M,X,J,V")
+•	hora_inicio (Time)
+•	hora_fin (Time)
+•	intervalo_minutos (Default 30)
+Tabla: disponibilidad_slots
+Esta tabla se puebla automáticamente a partir de las reglas anteriores.
+•	id (PK)
+•	tecnico_id (FK)
+•	centro_id (FK)
+•	fecha (Date)
+•	hora_inicio (Time)
+•	hora_fin (Time)
+•	estado (Enum: 'libre', 'ocupado', 'bloqueado')
+________________________________________
+4. Gestión de Citas
+Tabla: citas
+Relaciona todos los elementos cuando un paciente reserva.
+•	id (PK)
+•	paciente_id (FK)
+•	tecnico_id (FK)
+•	centro_id (FK)
+•	tipo_visita_id (FK)
+•	slot_id (FK -> disponibilidad_slots)
+•	fecha_hora_inicio (DateTime)
+•	fecha_hora_fin (DateTime)
+•	notas (Text)
+•	estado (Enum: 'confirmada', 'cancelada', 'asistida')
+________________________________________
+Resumen de Relaciones Clave:
+1.	Muchos a Uno: Muchos pacientes pertenecen a un tecnico y un centro preferido.
+2.	Muchos a Muchos (vía Planificación): Un tecnico puede estar en varios centros en diferentes días. La tabla disponibilidad_slots valida que un técnico no esté en dos sitios a la vez.
+3.	Integridad: Cuando un paciente busca cita, el sistema consulta disponibilidad_slots filtrando por su tecnico_asignado_id y centro_asignado_id donde el estado sea 'libre'.
+Ejemplo de Lógica para "Planificación Genérica":
+Si el admin configura: Desde 01/03 al 15/03, Lunes y Miércoles, de 09:00 a 11:00, cada 30 min, Técnico: Juan, Centro: Sala 1.
+El sistema ejecutará un script que insertará en disponibilidad_slots:
+•	01/03 (Lunes) 09:00 - 09:30 (Técnico Juan, Sala 1)
+•	01/03 (Lunes) 09:30 - 10:00 (Técnico Juan, Sala 1)
+•	... y así sucesivamente para todos los lunes y miércoles del rango.
+Para que la aplicación tenga esa fluidez tipo Amelia, el flujo debe ser asíncrono y predictivo. A continuación, presento el diagrama de flujo dividido en dos perspectivas: la Parametrización del Administrador (que alimenta el sistema) y la Reserva del Paciente (que consume los datos).
+________________________________________
+1. Flujo de Parametrización (Administrador/Backoffice)
+Este proceso es el que "puebla" la base de datos para que haya huecos disponibles.
+Fragmento de código
+graph TD
+    A[Inicio: Configuración del Sistema] --> B[Alta de Técnicos y Centros/Salas]
+    B --> C[Definición de Tipos de Visita y Tiempos]
+    C --> D{¿Crear Planificación Genérica?}
+    D --> E[Seleccionar Rango de Fechas: Desde/Hasta]
+    E --> F[Marcar Días de la Semana: L-M-X-J-V-S-D]
+    F --> G[Definir Horario y Intervalos: 30 min]
+    G --> H[Asignar Técnico a Centro/Sala]
+    H --> I[SISTEMA: Generar Slots de Disponibilidad en BD]
+    I --> J[Fin: Agenda lista para recibir citas]
+________________________________________
+2. Flujo de Reserva del Paciente (Frontend Moderno)
+Este flujo describe la experiencia del usuario final, optimizada para reducir clics.
+Fragmento de código
+graph TD
+    Start((Acceso Paciente)) --> Login[Login / Registro Rápido]
+    Login --> LoadProfile[Sistema carga Técnico y Centro asignado]
+    
+    subgraph Proceso de Reserva
+    LoadProfile --> SelectVisit[Seleccionar Tipo de Visita]
+    SelectVisit --> FetchSlots[Consultar Slots Libres en BD]
+    FetchSlots --> DisplayCal[Mostrar Calendario con Huecos Disponibles]
+    DisplayCal --> UserPick[Paciente elige Día y Hora]
+    end
+
+    UserPick --> Validation{¿Slot sigue libre?}
+    Validation -- No --> Refresh[Actualizar disponibilidad]
+    Refresh --> DisplayCal
+    
+    Validation -- Sí --> Confirm[Confirmar Cita]
+    Confirm --> UpdateDB[Marcar Slot como 'Ocupado']
+    UpdateDB --> Notif[Enviar Email de Confirmación]
+    Notif --> End((Cita Agendada))
+________________________________________
+3. Lógica de "Smart Booking" (Puntos Clave)
+Para que el diagrama funcione con la excelencia técnica que buscas, el sistema aplica estas reglas invisibles en el proceso:
+1.	Pre-filtrado Dinámico: Al entrar el paciente, el sistema ya sabe quién es su nutricionista habitual. El calendario no muestra "todo", sino que se filtra por ID_Tecnico e ID_Centro automáticamente para evitar confusiones.
+2.	Cruce de Tiempos: Si el "Tipo de Visita" seleccionado (ej. Primera Consulta) dura 60 min, el sistema agrupa automáticamente dos slots de 30 min de la tabla disponibilidad_slots. Si no hay dos consecutivos, ese hueco no se muestra.
+3.	Gestión de Conflictos: El sistema valida en el paso de "Planificación Genérica" que el técnico A no pueda ser asignado al centro 1 y al centro 2 en el mismo horario.
+________________________________________
+4. Interfaz Visual Sugerida
+Inspirándonos en Amelia, la pantalla de reserva debería ser un Widget Limpio:
+•	Columna Izquierda: Resumen del profesional (Foto, Nombre) y Centro.
+•	Centro: Calendario interactivo con vista mensual/semanal.
+•	Columna Derecha: Listado de horas disponibles (píldoras de tiempo) y botón de acción.
+
+
