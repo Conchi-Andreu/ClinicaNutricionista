@@ -76,11 +76,18 @@ export default function Register() {
                     </p>
                     <div className="bg-amber-50 rounded-2xl p-6 border border-amber-100 text-left mb-8">
                         <p className="text-xs text-amber-800 font-bold uppercase tracking-widest mb-2 flex items-center gap-2">
-                            <Lock size={14} /> Modo Simulación
+                            <Lock size={14} /> Entorno de Pruebas
                         </p>
-                        <p className="text-sm text-amber-900">
-                            En un entorno real recibirías un email. Para esta demo, el enlace ha sido impreso en la <strong>Consola del Navegador (F12)</strong>.
+                        <p className="text-sm text-amber-900 mb-4">
+                            Como la app está en modo demostración, el envío de emails reales requiere configurar un servidor SMTP. 
+                            Para continuar con tu prueba, haz clic en el siguiente botón de simulación:
                         </p>
+                        <Link 
+                            to={`/verify-email?token=${JSON.parse(localStorage.getItem('usuarios'))?.[localStorage.getItem('usuarios') ? JSON.parse(localStorage.getItem('usuarios')).length - 1 : 0]?.token_verificacion}`} 
+                            className="block w-full py-3 bg-white border-2 border-amber-200 text-amber-800 text-center rounded-xl font-bold hover:bg-amber-100 transition-colors"
+                        >
+                            🔗 Simular Clic en el Email
+                        </Link>
                     </div>
                     <Link to="/login" className="block w-full">
                         <Button variant="secondary" className="w-full">

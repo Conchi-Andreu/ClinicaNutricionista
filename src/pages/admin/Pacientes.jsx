@@ -129,7 +129,7 @@ export default function Pacientes() {
                     />
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto min-h-[300px] pb-24">
                     <table className="w-full">
                         <thead>
                             <tr className="border-b border-gray-100">
