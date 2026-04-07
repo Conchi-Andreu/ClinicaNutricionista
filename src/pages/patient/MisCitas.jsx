@@ -13,7 +13,7 @@ import {
     Info
 } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
-import { getAll, update } from '../../store/db';
+import { supabase } from '../../lib/supabase';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
 import { toast } from 'react-hot-toast';
@@ -23,63 +23,78 @@ import { es } from 'date-fns/locale';
 export default function MisCitas() {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const paciente = useMemo(() => getAll('pacientes').find(p => p.usuario_id === user?.id), [user]);
+    const [paciente, setPaciente] = useState(null);
+    const [citasList, setCitasList] = useState([]);
+    const [technicalData, setTechnicalData] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
 
-    const [items, setItems] = useState(() => {
-        const allCitas = getAll('citas');
-        return allCitas.filter(c =>
-            c.paciente_id === user?.id ||
-            (paciente && c.paciente_id === paciente.id)
-        );
-    });
+    const loadData = async () => {
+        setIsLoading(true);
+        try {
+            // Find patient
+            const { data: pacData } = await supabase.from('pacientes').select('*').eq('usuario_id', user?.id).single();
+            setPaciente(pacData);
+            
+            const pacId = pacData?.id || user?.id;
 
-    const technicalData = useMemo(() => {
-        const tecnicos = getAll('tecnicos');
-        const centros = getAll('centros_salas');
-        const tipos = getAll('tipos_visita');
+            // Load citas for this patient
+            const { data: userCitas } = await supabase
+                .from('citas')
+                .select('*')
+                .eq('paciente_id', pacId);
+                
+            const items = userCitas || [];
+            setCitasList(items);
 
-        return items.map(cita => ({
-            ...cita,
-            tecnico: tecnicos.find(t => t.id === cita.tecnico_id),
-            centro: centros.find(c => c.id === cita.centro_id),
-            tipo: tipos.find(t => t.id === cita.tipo_visita_id)
-        })).sort((a, b) => a.fecha_hora_inicio.localeCompare(b.fecha_hora_inicio));
-    }, [items]);
+            // Load additional ref data
+            const [tecRes, cenRes, tiposRes] = await Promise.all([
+                supabase.from('tecnicos').select('*'),
+                supabase.from('centros_salas').select('*'),
+                supabase.from('tipos_visita').select('*')
+            ]);
+
+            const tecnicos = tecRes.data || [];
+            const centros = cenRes.data || [];
+            const tipos = tiposRes.data || [];
+
+            const tData = items.map(cita => ({
+                ...cita,
+                tecnico: tecnicos.find(t => t.id === cita.tecnico_id),
+                centro: centros.find(c => c.id === cita.centro_id),
+                tipo: tipos.find(t => t.id === cita.tipo_visita_id)
+            })).sort((a, b) => a.fecha_hora_inicio.localeCompare(b.fecha_hora_inicio));
+
+            setTechnicalData(tData);
+        } catch (error) {
+            console.error('Error loading mis citas:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    React.useEffect(() => {
+        if (user) loadData();
+    }, [user]);
 
     const proximasCitas = technicalData.filter(c => c.estado === 'confirmada');
     const historialCitas = technicalData.filter(c => c.estado !== 'confirmada');
 
-    const handleCancelarCita = (cita) => {
+    const handleCancelarCita = async (cita) => {
         const fechaCita = parseISO(cita.fecha_hora_inicio);
         const limiteCancelacion = subHours(fechaCita, 24);
 
         if (!isAfter(new Date(), limiteCancelacion)) {
             if (window.confirm('¿Estás seguro de que deseas cancelar esta cita?')) {
                 // Update appointment status
-                update('citas', cita.id, { estado: 'cancelada' });
+                await supabase.from('citas').update({ estado: 'cancelada' }).eq('id', cita.id);
 
                 // Return slots to 'libre' status
-                const slots = getAll('disponibilidad_slots');
-                const citaSlots = getAll('citas').find(c => c.id === cita.id)?.slot_id; // Check if grouped slots or single
+                if (cita.slot_id) {
+                    await supabase.from('disponibilidad_slots').update({ estado: 'libre' }).eq('id', cita.slot_id);
+                }
 
-                // In this implementation logic we stored slot_id as a reference
-                // We need to find the specific slots and free them
-                // For simplicity in the Wizard we updated slot states directly in local storage
-                // We should release them here
-                const allSlots = getAll('disponibilidad_slots');
-                const updatedSlots = allSlots.map(s => {
-                    if (s.id === cita.slot_id) return { ...s, estado: 'libre' };
-                    // If it was a grouped slot, we would need the slotIds list stored in the appointment
-                    // For now, let's treat it as the main slot
-                    return s;
-                });
-                localStorage.setItem('disponibilidad_slots', JSON.stringify(updatedSlots));
-
-                setItems(getAll('citas').filter(c =>
-                    c.paciente_id === user?.id ||
-                    (paciente && c.paciente_id === paciente.id)
-                ));
                 toast.success('Cita cancelada correctamente');
+                loadData();
             }
         } else {
             toast.error('No se puede cancelar una cita con menos de 24h de antelación. Por favor, contacta con la clínica.');

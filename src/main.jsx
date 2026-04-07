@@ -5,11 +5,7 @@ import { Toaster } from 'react-hot-toast';
 import App from './App';
 import { AuthProvider } from './auth/AuthContext';
 import { SiteConfigProvider } from './context/SiteConfigContext';
-import { seedInitialData } from './store/db';
 import './index.css';
-
-// Seed demo data on first load
-seedInitialData();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>

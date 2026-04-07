@@ -16,7 +16,7 @@ import {
     Info
 } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
-import { getAll, create, update } from '../../store/db';
+import { supabase } from '../../lib/supabase';
 import { getFreeSlotsForPatient } from '../../store/slotGenerator';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
@@ -40,87 +40,109 @@ export default function BookingWizard() {
     const [selectedSlot, setSelectedSlot] = useState(null);
     const [notas, setNotas] = useState('');
 
-    // Loaded data
-    const [tecnicos] = useState(() => getAll('tecnicos'));
-    const [centros] = useState(() => getAll('centros_salas'));
-    const [tiposVisita] = useState(() => getAll('tipos_visita'));
+    const [tecnicos, setTecnicos] = useState([]);
+    const [centros, setCentros] = useState([]);
+    const [tiposVisita, setTiposVisita] = useState([]);
+    const [pacienteId, setPacienteId] = useState(null);
 
-    // Effective selections (from user state or defaults)
-    const [tecnico, setTecnico] = useState(() =>
-        tecnicos.find(t => t.id === user?.tecnico_asignado_id) || tecnicos[0]
-    );
-    const [centro, setCentro] = useState(() =>
-        centros.find(c => c.id === user?.centro_asignado_id) || centros[0]
-    );
+    const [tecnico, setTecnico] = useState(null);
+    const [centro, setCentro] = useState(null);
+    const [freeSlotsByDate, setFreeSlotsByDate] = useState({});
 
     const { refreshUser } = useAuth();
+    
+    // Load initial context (tecnicos, centros, etc)
+    useEffect(() => {
+        const loadInitialData = async () => {
+            const [tecRes, cenRes, tiposRes, pacRes] = await Promise.all([
+                supabase.from('tecnicos').select('*'),
+                supabase.from('centros_salas').select('*').eq('activo', true),
+                supabase.from('tipos_visita').select('*'),
+                supabase.from('pacientes').select('*').eq('usuario_id', user.id).single()
+            ]);
+            
+            const loadedTecnicos = tecRes.data || [];
+            const loadedCentros = cenRes.data || [];
+            
+            setTecnicos(loadedTecnicos);
+            setCentros(loadedCentros);
+            setTiposVisita(tiposRes.data || []);
+            
+            if (pacRes.data) {
+                setPacienteId(pacRes.data.id);
+            }
+            
+            setTecnico(loadedTecnicos.find(t => t.id === user?.tecnico_asignado_id) || loadedTecnicos[0] || null);
+            setCentro(loadedCentros.find(c => c.id === user?.centro_asignado_id) || loadedCentros[0] || null);
+            
+            // Reagendando
+            if (rescheduleCitaId) {
+                const { data: target } = await supabase.from('citas').select('*').eq('id', rescheduleCitaId).single();
+                if (target) {
+                    const tipo = (tiposRes.data || []).find(t => t.id === target.tipo_visita_id);
+                    const tec = loadedTecnicos.find(t => t.id === target.tecnico_id);
+                    const cen = loadedCentros.find(c => c.id === target.centro_id);
 
-    const freeSlotsByDate = useMemo(() => {
-        if (!selectedTipo || !tecnico || !centro) return {};
-        return getFreeSlotsForPatient(tecnico.id, centro.id, selectedTipo.duracion_minutos);
+                    if (tipo) setSelectedTipo(tipo);
+                    if (tec) setTecnico(tec);
+                    if (cen) setCentro(cen);
+                    if (target.notas) setNotas(target.notas);
+
+                    toast.success('Reagendando cita: Elige el nuevo horario', { icon: '🔄' });
+                    setStep(2);
+                }
+            }
+        };
+        loadInitialData();
+    }, [user, rescheduleCitaId]);
+
+    // Fetch free slots async when preferences change
+    useEffect(() => {
+        const fetchSlots = async () => {
+            if (!selectedTipo || !tecnico || !centro) {
+                setFreeSlotsByDate({});
+                return;
+            }
+            const slots = await getFreeSlotsForPatient(tecnico.id, centro.id, selectedTipo.duracion_minutos);
+            setFreeSlotsByDate(slots || {});
+        };
+        fetchSlots();
     }, [selectedTipo, tecnico, centro]);
 
     // Handle preference changes
-    const handleChangeTecnico = (e) => {
+    const handleChangeTecnico = async (e) => {
         const newTec = tecnicos.find(t => t.id === e.target.value);
         if (newTec) {
             setTecnico(newTec);
-            update('usuarios', user.id, { tecnico_asignado_id: newTec.id });
-
-            // Sync with patient record
-            const pacs = getAll('pacientes');
-            const pac = pacs.find(p => p.usuario_id === user.id);
-            if (pac) update('pacientes', pac.id, { tecnico_asignado_id: newTec.id });
+            await supabase.from('usuarios').update({ tecnico_asignado_id: newTec.id }).eq('id', user.id);
+            if (pacienteId) {
+                await supabase.from('pacientes').update({ tecnico_asignado_id: newTec.id }).eq('id', pacienteId);
+            }
 
             refreshUser();
             toast.success(`Ahora verás la agenda de ${newTec.nombre}`);
-            // Reset wizard progress if tech changes
             setStep(1);
             setSelectedTipo(null);
         }
     };
 
-    const handleChangeCentro = (e) => {
+    const handleChangeCentro = async (e) => {
         const newCentro = centros.find(c => c.id === e.target.value);
         if (newCentro) {
             setCentro(newCentro);
-            update('usuarios', user.id, { centro_asignado_id: newCentro.id });
-
-            // Sync with patient record
-            const pacs = getAll('pacientes');
-            const pac = pacs.find(p => p.usuario_id === user.id);
-            if (pac) update('pacientes', pac.id, { centro_asignado_id: newCentro.id });
+            await supabase.from('usuarios').update({ centro_asignado_id: newCentro.id }).eq('id', user.id);
+            if (pacienteId) {
+                await supabase.from('pacientes').update({ centro_asignado_id: newCentro.id }).eq('id', pacienteId);
+            }
 
             refreshUser();
             toast.success(`Cambiado a: ${newCentro.nombre}`);
-            // Reset wizard
             setStep(1);
             setSelectedTipo(null);
         }
     };
 
     const availableDates = useMemo(() => Object.keys(freeSlotsByDate), [freeSlotsByDate]);
-
-    // If rescheduling, load initial data
-    useEffect(() => {
-        if (rescheduleCitaId) {
-            const allCitas = getAll('citas');
-            const target = allCitas.find(c => c.id === rescheduleCitaId);
-            if (target) {
-                const tipo = tiposVisita.find(t => t.id === target.tipo_visita_id);
-                const tec = tecnicos.find(t => t.id === target.tecnico_id);
-                const cen = centros.find(c => c.id === target.centro_id);
-
-                if (tipo) setSelectedTipo(tipo);
-                if (tec) setTecnico(tec);
-                if (cen) setCentro(cen);
-                if (target.notas) setNotas(target.notas);
-
-                toast.success('Reagendando cita: Elige el nuevo horario', { icon: '🔄' });
-                setStep(2); // Direct to calendar
-            }
-        }
-    }, [rescheduleCitaId, tiposVisita, tecnicos, centros]);
 
     const handleSelectTipo = (tipo) => {
         setSelectedTipo(tipo);
@@ -143,56 +165,46 @@ export default function BookingWizard() {
     const handleConfirm = async () => {
         if (!selectedSlot) return;
 
-        setStep(100); // Intermediate loading state if we want, but let's stick to simple
+        setStep(100);
 
-        // 1. If rescheduling, free old slots first
-        if (rescheduleCitaId) {
-            const allCitas = getAll('citas');
-            const oldCita = allCitas.find(c => c.id === rescheduleCitaId);
-            if (oldCita) {
-                const allSlots = getAll('disponibilidad_slots');
-                const updatedSlots = allSlots.map(s => {
-                    if (s.id === oldCita.slot_id) return { ...s, estado: 'libre' };
-                    // If grouped slots, we'd need more logic here
-                    return s;
-                });
-                localStorage.setItem('disponibilidad_slots', JSON.stringify(updatedSlots));
+        try {
+            // 1. If rescheduling, free old slots first
+            if (rescheduleCitaId) {
+                const { data: oldCita } = await supabase.from('citas').select('*').eq('id', rescheduleCitaId).single();
+                if (oldCita) {
+                    await supabase.from('disponibilidad_slots').update({ estado: 'libre' }).eq('id', oldCita.slot_id);
+                }
             }
+
+            // 2. Process the new appointment / update
+            const citaData = {
+                paciente_id: pacienteId || user.id,
+                tecnico_id: tecnico.id,
+                centro_id: centro.id,
+                tipo_visita_id: selectedTipo.id,
+                slot_id: selectedSlot.id,
+                fecha_hora_inicio: `${selectedSlot.fecha}T${selectedSlot.hora_inicio}`,
+                fecha_hora_fin: `${selectedSlot.fecha}T${selectedSlot.hora_fin}`,
+                notas: notas,
+                estado: 'confirmada'
+            };
+
+            if (rescheduleCitaId) {
+                await supabase.from('citas').update(citaData).eq('id', rescheduleCitaId);
+            } else {
+                await supabase.from('citas').insert([citaData]);
+            }
+
+            // 3. Mark new slots as occupied
+            const idsToUpdate = selectedSlot.slotIds || [selectedSlot.id];
+            await supabase.from('disponibilidad_slots').update({ estado: 'ocupado' }).in('id', idsToUpdate);
+
+            toast.success(rescheduleCitaId ? '¡Cita reagendada con éxito!' : '¡Cita reservada con éxito!', { duration: 5000 });
+            setStep(4);
+        } catch (error) {
+            toast.error('Error al confirmar la reserva.');
+            setStep(3);
         }
-
-        // 2. Process the new appointment / update
-        const paciente = getAll('pacientes').find(p => p.usuario_id === user.id);
-        const citaData = {
-            paciente_id: paciente?.id || user.id,
-            tecnico_id: tecnico.id,
-            centro_id: centro.id,
-            tipo_visita_id: selectedTipo.id,
-            slot_id: selectedSlot.id,
-            fecha_hora_inicio: `${selectedSlot.fecha}T${selectedSlot.hora_inicio}`,
-            fecha_hora_fin: `${selectedSlot.fecha}T${selectedSlot.hora_fin}`,
-            notas: notas,
-            estado: 'confirmada'
-        };
-
-        if (rescheduleCitaId) {
-            update('citas', rescheduleCitaId, citaData);
-        } else {
-            create('citas', citaData);
-        }
-
-        // 3. Mark new slots as occupied
-        const slots = getAll('disponibilidad_slots');
-        const idsToUpdate = selectedSlot.slotIds || [selectedSlot.id];
-
-        idsToUpdate.forEach(id => {
-            const idx = slots.findIndex(s => s.id === id);
-            if (idx !== -1) slots[idx].estado = 'ocupado';
-        });
-
-        localStorage.setItem('disponibilidad_slots', JSON.stringify(slots));
-
-        toast.success(rescheduleCitaId ? '¡Cita reagendada con éxito!' : '¡Cita reservada con éxito!', { duration: 5000 });
-        setStep(4); // Success step
     };
 
     return (
