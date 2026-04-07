@@ -29,8 +29,6 @@ export default function GeneralConfig() {
     const handleSave = () => {
         saveAll('site_config', [config]);
         toast.success('Configuración guardada correctamente');
-        // Redirigir o recargar si es necesario para aplicar cambios globales
-        window.location.reload();
     };
 
     const handleFileUpload = (e, field) => {
