@@ -10,8 +10,18 @@ export default function Login({ embedded = false }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
-    const { login } = useAuth();
+    const { login, user } = useAuth();
     const navigate = useNavigate();
+
+    React.useEffect(() => {
+        if (user && user.rol) {
+            if (user.rol === 'admin' || user.rol === 'tecnico') {
+                navigate('/admin');
+            } else {
+                if (!embedded) navigate('/paciente');
+            }
+        }
+    }, [user, navigate, embedded]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
