@@ -20,10 +20,11 @@ export default function Login({ embedded = false }) {
         // Simulate slight network delay for better UX feel
         await new Promise(r => setTimeout(r, 600));
 
-        const res = login(email, password);
+        const res = await login(email, password);
         if (res.success) {
-            toast.success(`¡Bienvenido de nuevo, ${res.user.nombre}!`);
-            navigate(res.user.rol === 'admin' || res.user.rol === 'tecnico' ? '/admin' : '/paciente');
+            // El propio AuthState de Supabase recargará la sesión en el contexto,
+            // pero para acelerar el feedback al usuario en la UI tras el login exitoso:
+            toast.success(`¡Login correcto! Cargando panel...`);
         } else {
             toast.error(res.error);
         }

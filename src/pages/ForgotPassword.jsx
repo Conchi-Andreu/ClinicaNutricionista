@@ -19,7 +19,7 @@ export default function ForgotPassword() {
         // Simulation delay
         await new Promise(r => setTimeout(r, 1000));
 
-        const res = requestPasswordReset(email);
+        const res = await requestPasswordReset(email);
         if (res.success) {
             setSubmitted(true);
             toast.success('Enlace de recuperación generado');

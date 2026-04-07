@@ -52,7 +52,7 @@ export default function Register() {
         // Borramos confirmPassword antes de enviar a la DB
         const { confirmPassword, ...dataToSubmit } = formData;
 
-        const res = register(dataToSubmit);
+        const res = await register(dataToSubmit);
         if (res.success) {
             setIsRegistered(true);
             toast.success('¡Registro enviado! Revisa tu email.');
