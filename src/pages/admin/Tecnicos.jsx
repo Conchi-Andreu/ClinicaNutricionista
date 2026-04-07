@@ -9,7 +9,7 @@ import {
     Camera,
     User as UserIcon
 } from 'lucide-react';
-import { getAll, create, update, remove } from '../../store/db';
+import { supabase } from '../../lib/supabase';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import Modal from '../../components/Modal';
@@ -17,10 +17,26 @@ import Badge from '../../components/Badge';
 import { toast } from 'react-hot-toast';
 
 export default function Tecnicos() {
-    const [items, setItems] = useState(() => getAll('tecnicos'));
+    const [items, setItems] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    React.useEffect(() => {
+        fetchTecnicos();
+    }, []);
+
+    const fetchTecnicos = async () => {
+        setIsLoading(true);
+        const { data, error } = await supabase.from('tecnicos').select('*').order('createdAt', { ascending: false });
+        if (error) {
+            toast.error('Error al cargar técnicos: ' + error.message);
+        } else {
+            setItems(data || []);
+        }
+        setIsLoading(false);
+    };
 
     const [formData, setFormData] = useState({
         nombre: '',
@@ -57,24 +73,38 @@ export default function Tecnicos() {
         setIsModalOpen(true);
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        
         if (editingItem) {
-            update('tecnicos', editingItem.id, formData);
+            const { error } = await supabase.from('tecnicos').update(formData).eq('id', editingItem.id);
+            if (error) {
+                toast.error('Error al actualizar: ' + error.message);
+                return;
+            }
             toast.success('Técnico actualizado correctamente');
         } else {
-            create('tecnicos', formData);
+            const { error } = await supabase.from('tecnicos').insert([formData]);
+            if (error) {
+                toast.error('Error al crear: ' + error.message);
+                return;
+            }
             toast.success('Técnico creado correctamente');
         }
-        setItems(getAll('tecnicos'));
+        
+        fetchTecnicos();
         setIsModalOpen(false);
     };
 
-    const handleDelete = (id) => {
+    const handleDelete = async (id) => {
         if (window.confirm('¿Estás seguro de que deseas eliminar este técnico?')) {
-            remove('tecnicos', id);
-            setItems(getAll('tecnicos'));
-            toast.success('Técnico eliminado');
+            const { error } = await supabase.from('tecnicos').delete().eq('id', id);
+            if (error) {
+                toast.error('Error al eliminar: ' + error.message);
+            } else {
+                toast.success('Técnico eliminado');
+                fetchTecnicos();
+            }
         }
     };
 
@@ -109,7 +139,11 @@ export default function Tecnicos() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {filteredItems.map((item) => (
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan="4" className="py-12 text-center text-gray-500">Cargando técnicos...</td>
+                                </tr>
+                            ) : filteredItems.map((item) => (
                                 <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
                                     <td className="table-cell py-4">
                                         <div className="flex items-center gap-4">
@@ -158,7 +192,7 @@ export default function Tecnicos() {
                             ))}
                         </tbody>
                     </table>
-                    {filteredItems.length === 0 && (
+                    {(!isLoading && filteredItems.length === 0) && (
                         <div className="text-center py-12 text-gray-400">No se encontraron técnicos</div>
                     )}
                 </div>

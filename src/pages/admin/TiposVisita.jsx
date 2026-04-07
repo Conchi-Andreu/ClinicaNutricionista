@@ -8,7 +8,7 @@ import {
     Tag,
     Palette
 } from 'lucide-react';
-import { getAll, create, update, remove } from '../../store/db';
+import { supabase } from '../../lib/supabase';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import Modal from '../../components/Modal';
@@ -21,10 +21,26 @@ const PRESET_COLORS = [
 ];
 
 export default function TiposVisita() {
-    const [items, setItems] = useState(() => getAll('tipos_visita'));
+    const [items, setItems] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    React.useEffect(() => {
+        fetchTiposVisita();
+    }, []);
+
+    const fetchTiposVisita = async () => {
+        setIsLoading(true);
+        const { data, error } = await supabase.from('tipos_visita').select('*').order('createdAt', { ascending: false });
+        if (error) {
+            toast.error('Error al cargar servicios: ' + error.message);
+        } else {
+            setItems(data || []);
+        }
+        setIsLoading(false);
+    };
 
     const [formData, setFormData] = useState({
         nombre: '',
@@ -56,24 +72,38 @@ export default function TiposVisita() {
         setIsModalOpen(true);
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        
         if (editingItem) {
-            update('tipos_visita', editingItem.id, formData);
+            const { error } = await supabase.from('tipos_visita').update(formData).eq('id', editingItem.id);
+            if (error) {
+                toast.error('Error al actualizar: ' + error.message);
+                return;
+            }
             toast.success('Servicio actualizado');
         } else {
-            create('tipos_visita', formData);
+            const { error } = await supabase.from('tipos_visita').insert([formData]);
+            if (error) {
+                toast.error('Error al crear: ' + error.message);
+                return;
+            }
             toast.success('Servicio creado');
         }
-        setItems(getAll('tipos_visita'));
+        
+        fetchTiposVisita();
         setIsModalOpen(false);
     };
 
-    const handleDelete = (id) => {
+    const handleDelete = async (id) => {
         if (window.confirm('¿Eliminar este tipo de visita?')) {
-            remove('tipos_visita', id);
-            setItems(getAll('tipos_visita'));
-            toast.success('Servicio eliminado');
+            const { error } = await supabase.from('tipos_visita').delete().eq('id', id);
+            if (error) {
+                toast.error('Error al eliminar: ' + error.message);
+            } else {
+                toast.success('Servicio eliminado');
+                fetchTiposVisita();
+            }
         }
     };
 
@@ -127,7 +157,10 @@ export default function TiposVisita() {
                         </div>
                     </div>
                 ))}
-                {filteredItems.length === 0 && (
+                {isLoading && (
+                    <div className="lg:col-span-3 card flex items-center justify-center py-20 text-gray-500">Cargando servicios...</div>
+                )}
+                {!isLoading && filteredItems.length === 0 && (
                     <div className="lg:col-span-3 card flex items-center justify-center py-20 text-gray-400 font-medium">
                         No hay servicios configurados. ¡Crea el primero!
                     </div>

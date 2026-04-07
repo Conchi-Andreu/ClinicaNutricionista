@@ -10,7 +10,7 @@ import {
     XCircle,
     Building2
 } from 'lucide-react';
-import { getAll, create, update, remove } from '../../store/db';
+import { supabase } from '../../lib/supabase';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import Modal from '../../components/Modal';
@@ -18,10 +18,26 @@ import Badge from '../../components/Badge';
 import { toast } from 'react-hot-toast';
 
 export default function Centros() {
-    const [items, setItems] = useState(() => getAll('centros_salas'));
+    const [items, setItems] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    React.useEffect(() => {
+        fetchCentros();
+    }, []);
+
+    const fetchCentros = async () => {
+        setIsLoading(true);
+        const { data, error } = await supabase.from('centros_salas').select('*').order('createdAt', { ascending: false });
+        if (error) {
+            toast.error('Error al cargar centros: ' + error.message);
+        } else {
+            setItems(data || []);
+        }
+        setIsLoading(false);
+    };
 
     const [formData, setFormData] = useState({
         nombre: '',
@@ -57,31 +73,49 @@ export default function Centros() {
         setIsModalOpen(true);
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        
         if (editingItem) {
-            update('centros_salas', editingItem.id, formData);
+            const { error } = await supabase.from('centros_salas').update(formData).eq('id', editingItem.id);
+            if (error) {
+                toast.error('Error al actualizar: ' + error.message);
+                return;
+            }
             toast.success('Centro actualizado');
         } else {
-            create('centros_salas', formData);
+            const { error } = await supabase.from('centros_salas').insert([formData]);
+            if (error) {
+                toast.error('Error al crear: ' + error.message);
+                return;
+            }
             toast.success('Centro creado');
         }
-        setItems(getAll('centros_salas'));
+        
+        fetchCentros();
         setIsModalOpen(false);
     };
 
-    const handleDelete = (id) => {
+    const handleDelete = async (id) => {
         if (window.confirm('¿Eliminar este centro? Se perderán las relaciones de disponibilidad.')) {
-            remove('centros_salas', id);
-            setItems(getAll('centros_salas'));
-            toast.success('Centro eliminado');
+            const { error } = await supabase.from('centros_salas').delete().eq('id', id);
+            if (error) {
+                toast.error('Error al eliminar: ' + error.message);
+            } else {
+                toast.success('Centro eliminado');
+                fetchCentros();
+            }
         }
     };
 
-    const toggleStatus = (item) => {
-        update('centros_salas', item.id, { activo: !item.activo });
-        setItems(getAll('centros_salas'));
-        toast.success(`Centro ${!item.activo ? 'activado' : 'desactivado'}`);
+    const toggleStatus = async (item) => {
+        const { error } = await supabase.from('centros_salas').update({ activo: !item.activo }).eq('id', item.id);
+        if (error) {
+            toast.error('Error: ' + error.message);
+        } else {
+            toast.success(`Centro ${!item.activo ? 'activado' : 'desactivado'}`);
+            fetchCentros();
+        }
     };
 
     return (
@@ -116,7 +150,11 @@ export default function Centros() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {filteredItems.map((item) => (
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan="5" className="py-12 text-center text-gray-500">Cargando centros...</td>
+                                </tr>
+                            ) : filteredItems.map((item) => (
                                 <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
                                     <td className="table-cell py-4">
                                         <div className="flex items-center gap-4">
@@ -170,7 +208,7 @@ export default function Centros() {
                             ))}
                         </tbody>
                     </table>
-                    {filteredItems.length === 0 && (
+                    {!isLoading && filteredItems.length === 0 && (
                         <div className="text-center py-12 text-gray-400">No se encontraron centros</div>
                     )}
                 </div>

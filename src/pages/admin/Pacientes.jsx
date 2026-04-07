@@ -14,7 +14,7 @@ import {
     Trash2,
     X
 } from 'lucide-react';
-import { getAll, update, remove } from '../../store/db';
+import { supabase } from '../../lib/supabase';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import Badge from '../../components/Badge';
@@ -24,7 +24,11 @@ import { toast } from 'react-hot-toast';
 export default function Pacientes() {
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
-    const [items, setItems] = useState(() => getAll('pacientes'));
+    const [items, setItems] = useState([]);
+    const [citasList, setCitasList] = useState([]);
+    const [centrosList, setCentrosList] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
     const [formData, setFormData] = useState({
@@ -34,10 +38,30 @@ export default function Pacientes() {
         telefono: ''
     });
 
+    React.useEffect(() => {
+        fetchData();
+    }, []);
+
+    const fetchData = async () => {
+        setIsLoading(true);
+        const [pacientesRes, citasRes, centrosRes] = await Promise.all([
+            supabase.from('pacientes').select('*').order('createdAt', { ascending: false }),
+            supabase.from('citas').select('*'),
+            supabase.from('centros_salas').select('*')
+        ]);
+        
+        if (pacientesRes.error) toast.error('Error cargando pacientes: ' + pacientesRes.error.message);
+        
+        setItems(pacientesRes.data || []);
+        setCitasList(citasRes.data || []);
+        setCentrosList(centrosRes.data || []);
+        setIsLoading(false);
+    };
+
     const patients = useMemo(() => {
         const allPatients = items;
-        const allCitas = getAll('citas');
-        const allCentros = getAll('centros_salas');
+        const allCitas = citasList;
+        const allCentros = centrosList;
         const now = new Date();
 
         return allPatients.map(paciente => {
@@ -73,7 +97,7 @@ export default function Pacientes() {
                 p.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 p.telefono.includes(searchTerm);
         });
-    }, [searchTerm]);
+    }, [items, citasList, centrosList, searchTerm]);
 
     const [openMenuId, setOpenMenuId] = useState(null);
 
@@ -93,21 +117,29 @@ export default function Pacientes() {
         setOpenMenuId(null);
     };
 
-    const handleDelete = (id) => {
+    const handleDelete = async (id) => {
         if (window.confirm('¿Estás seguro de que deseas eliminar este paciente?')) {
-            remove('pacientes', id);
-            setItems(getAll('pacientes'));
-            toast.success('Paciente eliminado correctamente');
+            const { error } = await supabase.from('pacientes').delete().eq('id', id);
+            if (error) {
+                toast.error('Error al eliminar: ' + error.message);
+            } else {
+                toast.success('Paciente eliminado correctamente');
+                fetchData();
+            }
         }
         setOpenMenuId(null);
     };
 
-    const handleSaveEdit = (e) => {
+    const handleSaveEdit = async (e) => {
         e.preventDefault();
-        update('pacientes', editingItem.id, formData);
-        setItems(getAll('pacientes'));
-        setIsEditModalOpen(false);
+        const { error } = await supabase.from('pacientes').update(formData).eq('id', editingItem.id);
+        if (error) {
+            toast.error('Error al guardar: ' + error.message);
+            return;
+        }
         toast.success('Datos del paciente actualizados');
+        setIsEditModalOpen(false);
+        fetchData();
     };
 
     return (
@@ -141,7 +173,11 @@ export default function Pacientes() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {patients.map((p) => (
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan="5" className="py-12 text-center text-gray-500">Cargando datos...</td>
+                                </tr>
+                            ) : patients.map((p) => (
                                 <tr key={p.id} className="hover:bg-gray-50/50 transition-colors group">
                                     <td className="table-cell py-4">
                                         <div className="flex items-center gap-3">
@@ -239,7 +275,7 @@ export default function Pacientes() {
                         </tbody>
                     </table>
 
-                    {patients.length === 0 && (
+                    {(!isLoading && patients.length === 0) && (
                         <div className="text-center py-20">
                             <div className="mx-auto w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-300 mb-4">
                                 <User size={32} />
