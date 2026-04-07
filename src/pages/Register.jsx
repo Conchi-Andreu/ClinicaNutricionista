@@ -74,20 +74,11 @@ export default function Register() {
                         Hemos enviado un enlace de confirmación a <span className="text-primary-600 font-bold">{formData.email}</span>.
                         Por favor, haz clic en el enlace para activar tu cuenta.
                     </p>
-                    <div className="bg-amber-50 rounded-2xl p-6 border border-amber-100 text-left mb-8">
-                        <p className="text-xs text-amber-800 font-bold uppercase tracking-widest mb-2 flex items-center gap-2">
-                            <Lock size={14} /> Entorno de Pruebas
+                    <div className="bg-primary-50 rounded-2xl p-6 border border-primary-100 text-left mb-8">
+                        <p className="text-sm text-primary-900 mb-4">
+                            Busca en tu bandeja de entrada un correo nuestro con el enlace de activación. 
+                            Si no lo encuentras en unos minutos, revisa tu carpeta de Spam.
                         </p>
-                        <p className="text-sm text-amber-900 mb-4">
-                            Como la app está en modo demostración, el envío de emails reales requiere configurar un servidor SMTP. 
-                            Para continuar con tu prueba, haz clic en el siguiente botón de simulación:
-                        </p>
-                        <Link 
-                            to={`/verify-email?token=${JSON.parse(localStorage.getItem('usuarios'))?.[localStorage.getItem('usuarios') ? JSON.parse(localStorage.getItem('usuarios')).length - 1 : 0]?.token_verificacion}`} 
-                            className="block w-full py-3 bg-white border-2 border-amber-200 text-amber-800 text-center rounded-xl font-bold hover:bg-amber-100 transition-colors"
-                        >
-                            🔗 Simular Clic en el Email
-                        </Link>
                     </div>
                     <Link to="/login" className="block w-full">
                         <Button variant="secondary" className="w-full">
