@@ -4,7 +4,7 @@
 // ====================================================
 
 import { addDays, parseISO, format, isWithinInterval, getDay } from 'date-fns';
-import { getAll, create, saveAll } from './db';
+import { supabase } from '../lib/supabase';
 
 const DAY_MAP = { L: 1, M: 2, X: 3, J: 4, V: 5, S: 6, D: 0 };
 
@@ -13,11 +13,17 @@ const DAY_MAP = { L: 1, M: 2, X: 3, J: 4, V: 5, S: 6, D: 0 };
  * @param {Object} regla - planificacion_regla object
  * @returns {{ count: number, conflicts: number }} result stats
  */
-export function generateSlots(regla) {
+export async function generateSlots(regla) {
     const { id: regla_id, tecnico_id, centro_id, fecha_desde, fecha_hasta, dias_semana, hora_inicio, hora_fin, intervalo_minutos } = regla;
 
     const diasArray = dias_semana.split(',').map((d) => DAY_MAP[d.trim()]);
-    const existingSlots = getAll('disponibilidad_slots');
+    
+    // Fetch only slots for the same tecnico to check for conflicts
+    const { data: existingSlots } = await supabase
+        .from('disponibilidad_slots')
+        .select('fecha, hora_inicio')
+        .eq('tecnico_id', tecnico_id);
+    
     const newSlots = [];
     let conflicts = 0;
 
@@ -40,29 +46,25 @@ export function generateSlots(regla) {
                 const toTime = minutesToTime(slotStart + intervalo_minutos);
 
                 // Conflict check: same tecnico, same date, overlapping time
-                const conflict = existingSlots.some(
-                    (s) =>
-                        s.tecnico_id === tecnico_id &&
-                        s.fecha === dateStr &&
-                        s.hora_inicio === fromTime
+                const conflict = existingSlots?.some(
+                    (s) => s.fecha === dateStr && s.hora_inicio.slice(0, 5) === fromTime
                 );
 
                 if (conflict) {
                     conflicts++;
                 } else {
                     const slot = {
-                        id: crypto.randomUUID(),
                         tecnico_id,
                         centro_id,
                         regla_id,
                         fecha: dateStr,
                         hora_inicio: fromTime,
                         hora_fin: toTime,
-                        estado: 'libre',
-                        createdAt: new Date().toISOString(),
+                        estado: 'libre'
                     };
                     newSlots.push(slot);
-                    existingSlots.push(slot); // prevent duplicates within same generation
+                    // Add to existing memory array immediately to prevent intra-batch duplicates
+                    existingSlots.push({ fecha: dateStr, hora_inicio: fromTime });
                 }
 
                 slotStart += intervalo_minutos;
@@ -71,7 +73,11 @@ export function generateSlots(regla) {
         current = addDays(current, 1);
     }
 
-    saveAll('disponibilidad_slots', existingSlots);
+    if (newSlots.length > 0) {
+        // Insert slots in batches if too large, but Supabase supports insert array easily
+        await supabase.from('disponibilidad_slots').insert(newSlots);
+    }
+    
     return { count: newSlots.length, conflicts };
 }
 
@@ -108,10 +114,15 @@ export function previewSlotCount(regla) {
  * Get free slots for a patient booking, grouped by date
  * Supports multi-slot grouping for longer visit types
  */
-export function getFreeSlotsForPatient(tecnico_id, centro_id, duracion_minutos, intervalo_minutos = 30) {
-    const allSlots = getAll('disponibilidad_slots').filter(
-        (s) => s.tecnico_id === tecnico_id && s.centro_id === centro_id && s.estado === 'libre'
-    );
+export async function getFreeSlotsForPatient(tecnico_id, centro_id, duracion_minutos, intervalo_minutos = 30) {
+    const { data: allSlots } = await supabase
+        .from('disponibilidad_slots')
+        .select('*')
+        .eq('tecnico_id', tecnico_id)
+        .eq('centro_id', centro_id)
+        .eq('estado', 'libre');
+
+    if (!allSlots) return {};
 
     const slotsNeeded = Math.ceil(duracion_minutos / intervalo_minutos);
 
@@ -120,7 +131,7 @@ export function getFreeSlotsForPatient(tecnico_id, centro_id, duracion_minutos, 
     }
 
     // Group consecutive slots
-    const validSlots = [];
+    const validSlots = {};
     const byDate = groupByDate(allSlots);
 
     for (const [date, slots] of Object.entries(byDate)) {
@@ -130,7 +141,7 @@ export function getFreeSlotsForPatient(tecnico_id, centro_id, duracion_minutos, 
         for (let i = 0; i <= sorted.length - slotsNeeded; i++) {
             let consecutive = true;
             for (let j = 0; j < slotsNeeded - 1; j++) {
-                if (sorted[i + j].hora_fin !== sorted[i + j + 1].hora_inicio) {
+                if (sorted[i + j].hora_fin.slice(0, 5) !== sorted[i + j + 1].hora_inicio.slice(0, 5)) {
                     consecutive = false;
                     break;
                 }
@@ -138,7 +149,7 @@ export function getFreeSlotsForPatient(tecnico_id, centro_id, duracion_minutos, 
             if (consecutive) {
                 groups.push({
                     ...sorted[i],
-                    hora_fin: sorted[i + slotsNeeded - 1].hora_fin,
+                    hora_fin: sorted[i + slotsNeeded - 1].hora_fin.slice(0, 5),
                     slotIds: sorted.slice(i, i + slotsNeeded).map((s) => s.id),
                 });
             }
@@ -160,7 +171,6 @@ function groupByDate(slots) {
 /**
  * Delete all slots generated by a rule
  */
-export function deleteSlotsForRule(regla_id) {
-    const slots = getAll('disponibilidad_slots').filter((s) => s.regla_id !== regla_id);
-    saveAll('disponibilidad_slots', slots);
+export async function deleteSlotsForRule(regla_id) {
+    await supabase.from('disponibilidad_slots').delete().eq('regla_id', regla_id).eq('estado', 'libre');
 }
