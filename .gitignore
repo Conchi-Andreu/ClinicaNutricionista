@@ -25,3 +25,8 @@ dist-ssr
 
 # Vite
 vite-error.txt
+
+# Environment
+.env
+.env.*
+!.env.example
