@@ -80,6 +80,9 @@ export default function App() {
 
     return (
         <ErrorBoundary>
+            <div className="fixed bottom-4 right-4 lg:top-4 lg:bottom-auto lg:right-4 z-[9999] text-[10px] font-black tracking-widest text-gray-400 bg-white/60 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 pointer-events-none uppercase">
+                V1.1
+            </div>
             <Routes>
                 {/* Public */}
                 <Route path="/login" element={!user ? <Login /> : <Navigate to={user.rol === 'admin' || user.rol === 'tecnico' ? '/admin' : '/paciente'} />} />
