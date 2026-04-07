@@ -21,11 +21,6 @@ export default function ResetPassword() {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        if (!token) {
-            toast.error('Token no válido');
-            return;
-        }
-
         if (formData.password !== formData.confirmPassword) {
             toast.error('Las contraseñas no coinciden');
             return;
@@ -39,7 +34,7 @@ export default function ResetPassword() {
         setLoading(true);
         await new Promise(r => setTimeout(r, 1000));
 
-        const res = await resetPassword(token, formData.password);
+        const res = await resetPassword(null, formData.password);
         if (res.success) {
             setStatus('success');
             toast.success('Contraseña actualizada correctamente');
@@ -68,28 +63,7 @@ export default function ResetPassword() {
                 </div>
             </div>
         );
-    }
-
-    if (!token) {
-        return (
-            <div className="min-h-screen bg-cream-100 flex flex-col items-center justify-center p-4">
-                <div className="w-full max-w-[440px] animate-fade-in bg-white rounded-[2.5rem] shadow-modal p-12 text-center">
-                    <div className="w-20 h-20 bg-red-100 text-red-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner">
-                        <XCircle size={40} />
-                    </div>
-                    <h2 className="text-3xl font-extrabold text-gray-900 mb-4">Enlace no válido</h2>
-                    <p className="text-gray-500 font-medium leading-relaxed mb-8">
-                        El enlace de recuperación es incorrecto o ha expirado. Por favor, solicita uno nuevo.
-                    </p>
-                    <Link to="/forgot-password" className="block w-full">
-                        <Button variant="secondary" className="w-full h-14">
-                            Solicitar nuevo enlace
-                        </Button>
-                    </Link>
-                </div>
-            </div>
-        );
-    }
+    } // Token validation is removed because Supabase PKCE consumes the code immediately
 
     return (
         <div className="min-h-screen bg-cream-100 flex flex-col items-center justify-center p-4">
