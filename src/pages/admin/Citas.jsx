@@ -17,7 +17,7 @@ import {
     FileEdit,
     DollarSign
 } from 'lucide-react';
-import { getAll, update } from '../../store/db';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthContext';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
@@ -30,12 +30,18 @@ import { User, FileText, Phone, Mail as MailIcon, CreditCard as CardIcon, Sticky
 export default function Citas() {
     const { user } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
-    const [items, setItems] = useState(() => getAll('citas'));
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCita, setSelectedCita] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
     const [visitNotes, setVisitNotes] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
+
+    const [citasList, setCitasList] = useState([]);
+    const [pacientesList, setPacientesList] = useState([]);
+    const [tecnicosList, setTecnicosList] = useState([]);
+    const [centrosList, setCentrosList] = useState([]);
+    const [tiposList, setTiposList] = useState([]);
 
     // Initial Defaults
     const today = new Date().toISOString().split('T')[0];
@@ -43,35 +49,53 @@ export default function Citas() {
     const [filterEstado, setFilterEstado] = useState('confirmada');
     const [filterFecha, setFilterFecha] = useState(today);
     const [filterCentro, setFilterCentro] = useState('');
+    const [filterTecnico, setFilterTecnico] = useState('');
 
-    // Tech filter depends on role
-    const [filterTecnico, setFilterTecnico] = useState(() => {
+    useEffect(() => {
+        fetchData();
+    }, [user]);
+
+    const fetchData = async () => {
+        setIsLoading(true);
+        const [citasRes, pacRes, tecRes, cenRes, tiposRes] = await Promise.all([
+            supabase.from('citas').select('*'),
+            supabase.from('pacientes').select('*'),
+            supabase.from('tecnicos').select('*'),
+            supabase.from('centros_salas').select('*'),
+            supabase.from('tipos_visita').select('*')
+        ]);
+        
+        setCitasList(citasRes.data || []);
+        setPacientesList(pacRes.data || []);
+        
+        const loadedTecnicos = tecRes.data || [];
+        setTecnicosList(loadedTecnicos);
+        
+        setCentrosList(cenRes.data || []);
+        setTiposList(tiposRes.data || []);
+        
+        // Auto-assign tech filter if it's a technical user
         if (user?.rol === 'tecnico') {
-            const tecs = getAll('tecnicos');
-            const found = tecs.find(t => t.usuario_id === user.id || t.email === user.email);
-            return found?.id || '';
+             const found = loadedTecnicos.find(t => t.usuario_id === user.id || t.email === user.email);
+             if (found) setFilterTecnico(found.id);
         }
-        return '';
-    });
+        
+        setIsLoading(false);
+    };
 
     const pacienteIdFilter = searchParams.get('pacienteId');
     const filteredPaciente = useMemo(() => {
         if (!pacienteIdFilter) return null;
-        return getAll('pacientes').find(p => p.id === pacienteIdFilter || p.usuario_id === pacienteIdFilter);
-    }, [pacienteIdFilter]);
+        return pacientesList.find(p => p.id === pacienteIdFilter || p.usuario_id === pacienteIdFilter);
+    }, [pacienteIdFilter, pacientesList]);
 
     const data = useMemo(() => {
-        const pacientes = getAll('pacientes');
-        const tecnicos = getAll('tecnicos');
-        const centros = getAll('centros_salas');
-        const tipos = getAll('tipos_visita');
-
-        return (items || []).map(cita => ({
+        return (citasList || []).map(cita => ({
             ...cita,
-            paciente: (pacientes || []).find(p => p.id === cita?.paciente_id || p.usuario_id === cita?.paciente_id),
-            tecnico: (tecnicos || []).find(t => t.id === cita?.tecnico_id),
-            centro: (centros || []).find(c => c.id === cita?.centro_id),
-            tipo: (tipos || []).find(t => t.id === cita?.tipo_visita_id)
+            paciente: (pacientesList || []).find(p => p.id === cita?.paciente_id || p.usuario_id === cita?.paciente_id),
+            tecnico: (tecnicosList || []).find(t => t.id === cita?.tecnico_id),
+            centro: (centrosList || []).find(c => c.id === cita?.centro_id),
+            tipo: (tiposList || []).find(t => t.id === cita?.tipo_visita_id)
         })).filter(cita => {
             const nameMatch = `${cita.paciente?.nombre || ''} ${cita.paciente?.apellidos || ''}`.toLowerCase().includes(searchTerm.toLowerCase());
             const estadoMatch = !filterEstado || cita.estado === filterEstado;
@@ -83,19 +107,21 @@ export default function Citas() {
 
             return nameMatch && estadoMatch && patientIdMatch && tecnicoMatch && centroMatch && fechaMatch;
         }).sort((a, b) => (a?.fecha_hora_inicio || '').localeCompare(b?.fecha_hora_inicio || ''));
-    }, [items, searchTerm, filterEstado, filterFecha, filterCentro, filterTecnico, pacienteIdFilter, user]);
+    }, [citasList, pacientesList, tecnicosList, centrosList, tiposList, searchTerm, filterEstado, filterFecha, filterCentro, filterTecnico, pacienteIdFilter, user]);
 
-    const handleUpdateEstado = (id, nuevoEstado) => {
-        update('citas', id, { estado: nuevoEstado });
-        setItems(getAll('citas'));
+    const handleUpdateEstado = async (id, nuevoEstado) => {
+        const { error } = await supabase.from('citas').update({ estado: nuevoEstado }).eq('id', id);
+        if (error) { toast.error(error.message); return; }
         toast.success(`Cita marcada como ${nuevoEstado}`);
+        fetchData();
     };
 
-    const handleTogglePago = (cita) => {
+    const handleTogglePago = async (cita) => {
         const nuevoEstadoPago = !cita.pagado;
-        update('citas', cita.id, { pagado: nuevoEstadoPago });
-        setItems(getAll('citas'));
+        const { error } = await supabase.from('citas').update({ pagado: nuevoEstadoPago }).eq('id', cita.id);
+        if (error) { toast.error(error.message); return; }
         toast.success(nuevoEstadoPago ? 'Cita marcada como PAGADA' : 'Cita marcada como PENDIENTE DE PAGO');
+        fetchData();
     };
 
     const handleOpenNotes = (cita) => {
@@ -106,20 +132,22 @@ export default function Citas() {
 
     const patientHistory = useMemo(() => {
         if (!selectedCita?.paciente_id) return [];
-        return items
+        return citasList
             .filter(c =>
                 (c.paciente_id === selectedCita.paciente_id) &&
                 c.notas_visita &&
                 c.id !== selectedCita.id
             )
             .sort((a, b) => a.fecha_hora_inicio.localeCompare(b.fecha_hora_inicio));
-    }, [selectedCita, items]);
+    }, [selectedCita, citasList]);
 
-    const handleSaveNotes = () => {
-        update('citas', selectedCita.id, { notas_visita: visitNotes });
-        setItems(getAll('citas'));
-        setIsNotesModalOpen(false);
+    const handleSaveNotes = async () => {
+        const { error } = await supabase.from('citas').update({ notas_visita: visitNotes }).eq('id', selectedCita.id);
+        if (error) { toast.error(error.message); return; }
+        setSelectedCita(prev => ({ ...prev, notas_visita: visitNotes }));
         toast.success('Datos de la visita guardados correctamente');
+        setIsNotesModalOpen(false);
+        fetchData();
     };
 
     const handleViewDetails = (cita) => {
@@ -230,7 +258,7 @@ export default function Citas() {
                                     onChange={(e) => setFilterCentro(e.target.value)}
                                 >
                                     <option value="">Cualquier Centro</option>
-                                    {getAll('centros_salas').map(c => (
+                                    {centrosList.map(c => (
                                         <option key={c.id} value={c.id}>{c.nombre}</option>
                                     ))}
                                 </select>
@@ -246,7 +274,7 @@ export default function Citas() {
                                         onChange={(e) => setFilterTecnico(e.target.value)}
                                     >
                                         <option value="">Cualquier Profesional</option>
-                                        {getAll('tecnicos').map(t => (
+                                        {tecnicosList.map(t => (
                                             <option key={t.id} value={t.id}>{t.nombre}</option>
                                         ))}
                                     </select>
@@ -289,7 +317,9 @@ export default function Citas() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {data.map((item) => (
+                            {isLoading ? (
+                                <tr><td colSpan="7" className="py-12 text-center text-gray-500">Cargando citas...</td></tr>
+                            ) : data.map((item) => (
                                 <tr key={item.id} className="hover:bg-gray-50/50 transition-colors group">
                                     <td className="table-cell py-4">
                                         <div className="flex items-center gap-3">
@@ -391,7 +421,7 @@ export default function Citas() {
                             ))}
                         </tbody>
                     </table>
-                    {data.length === 0 && (
+                    {(!isLoading && data.length === 0) && (
                         <div className="text-center py-20">
                             <div className="mx-auto w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-300 mb-4">
                                 <Calendar size={32} />

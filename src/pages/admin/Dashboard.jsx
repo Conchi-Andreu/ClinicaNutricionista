@@ -9,13 +9,13 @@ import {
     Plus,
     Settings
 } from 'lucide-react';
-import { getAll } from '../../store/db';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthContext';
 import Button from '../../components/Button';
 import { Link } from 'react-router-dom';
 import Badge from '../../components/Badge';
 import Modal from '../../components/Modal';
-import { update } from '../../store/db';
+
 import { toast } from 'react-hot-toast';
 import { History, FileEdit } from 'lucide-react';
 import { useSiteConfig } from '../../context/SiteConfigContext';
@@ -26,32 +26,57 @@ export default function Dashboard() {
     const [isNotesModalOpen, setIsNotesModalOpen] = React.useState(false);
     const [selectedCita, setSelectedCita] = React.useState(null);
     const [visitNotes, setVisitNotes] = React.useState('');
-    const [allCitas, setAllCitas] = React.useState(() => getAll('citas'));
+
+    const [allCitas, setAllCitas] = React.useState([]);
+
+    const [tecnicosList, setTecnicosList] = React.useState([]);
+    const [centrosList, setCentrosList] = React.useState([]);
+    const [pacientesList, setPacientesList] = React.useState([]);
+    const [slotsList, setSlotsList] = React.useState([]);
+    const [tiposList, setTiposList] = React.useState([]);
+    const [isLoading, setIsLoading] = React.useState(true);
+
+    React.useEffect(() => {
+        fetchDashboardData();
+    }, [user]);
+
+    const fetchDashboardData = async () => {
+        setIsLoading(true);
+        const [citasRes, tecRes, cenRes, pacRes, slotsRes, tiposRes] = await Promise.all([
+            supabase.from('citas').select('*'),
+            supabase.from('tecnicos').select('*'),
+            supabase.from('centros_salas').select('*'),
+            supabase.from('pacientes').select('*'),
+            supabase.from('disponibilidad_slots').select('tecnico_id,estado'),
+            supabase.from('tipos_visita').select('*')
+        ]);
+        
+        setAllCitas(citasRes.data || []);
+        setTecnicosList(tecRes.data || []);
+        setCentrosList(cenRes.data || []);
+        setPacientesList(pacRes.data || []);
+        setSlotsList(slotsRes.data || []);
+        setTiposList(tiposRes.data || []);
+        setIsLoading(false);
+    };
 
     const currentTecnicoId = useMemo(() => {
         if (user?.rol !== 'tecnico') return null;
-        const tecnicos = getAll('tecnicos');
-        const tec = tecnicos.find(t => t.usuario_id === user.id || t.email === user.email);
+        const tec = tecnicosList.find(t => t.usuario_id === user.id || t.email === user.email);
         return tec?.id;
-    }, [user]);
+    }, [user, tecnicosList]);
 
     const stats = useMemo(() => {
-        const tecnicos = getAll('tecnicos');
-        const centros = getAll('centros_salas');
-        const citas = getAll('citas');
-        const pacientes = getAll('pacientes');
-        const slots = getAll('disponibilidad_slots');
-
         const hoy = new Date().toISOString().split('T')[0];
 
         // Filter by technician if needed
         const filteredCitas = currentTecnicoId
-            ? (citas || []).filter(c => c.tecnico_id === currentTecnicoId)
-            : (citas || []);
+            ? (allCitas || []).filter(c => c.tecnico_id === currentTecnicoId)
+            : (allCitas || []);
 
         const filteredSlots = currentTecnicoId
-            ? (slots || []).filter(s => s.tecnico_id === currentTecnicoId)
-            : (slots || []);
+            ? (slotsList || []).filter(s => s.tecnico_id === currentTecnicoId)
+            : (slotsList || []);
 
         const citasHoy = filteredCitas.filter(c => c?.fecha_hora_inicio?.startsWith(hoy)).length;
         const slotsLibresSemana = filteredSlots.filter(s => s?.estado === 'libre').length;
@@ -66,28 +91,26 @@ export default function Dashboard() {
 
         return [
             { label: 'Citas Hoy', value: citasHoy, icon: CalendarIcon, color: 'text-blue-600', bg: 'bg-blue-50', trend: '+12%' },
-            { label: 'Técnicos Activos', value: tecnicos.length, icon: Users, color: 'text-primary-600', bg: 'bg-primary-50', trend: 'Estable' },
-            { label: 'Centros / Salas', value: centros.filter(c => c.activo).length, icon: MapPin, color: 'text-amber-600', bg: 'bg-amber-50', trend: 'Sin cambios' },
-            { label: 'Total Pacientes', value: pacientes.length, icon: ClipboardCheck, color: 'text-purple-600', bg: 'bg-purple-50', trend: '+5' },
+            { label: 'Técnicos Activos', value: tecnicosList.length, icon: Users, color: 'text-primary-600', bg: 'bg-primary-50', trend: 'Estable' },
+            { label: 'Centros / Salas', value: centrosList.filter(c => c.activo).length, icon: MapPin, color: 'text-amber-600', bg: 'bg-amber-50', trend: 'Sin cambios' },
+            { label: 'Total Pacientes', value: pacientesList.length, icon: ClipboardCheck, color: 'text-purple-600', bg: 'bg-purple-50', trend: '+5' },
         ];
-    }, [currentTecnicoId, user]);
+    }, [currentTecnicoId, user, allCitas, tecnicosList, centrosList, pacientesList, slotsList]);
 
     const proximasCitas = useMemo(() => {
-        const citas = getAll('citas');
-        const pacientes = getAll('pacientes');
-        const tipos = getAll('tipos_visita');
-
-        let filtered = (citas || []);
+        let filtered = (allCitas || []);
         if (currentTecnicoId) {
             filtered = filtered.filter(c => c.tecnico_id === currentTecnicoId);
         }
 
+        filtered = filtered.sort((a,b) => b.fecha_hora_inicio.localeCompare(a.fecha_hora_inicio));
+
         return filtered.slice(0, 5).map(cita => ({
             ...cita,
-            paciente: (pacientes || []).find(p => p.id === cita?.paciente_id || p.usuario_id === cita?.paciente_id),
-            tipo: (tipos || []).find(t => t.id === cita?.tipo_visita_id)
+            paciente: (pacientesList || []).find(p => p.id === cita?.paciente_id || p.usuario_id === cita?.paciente_id),
+            tipo: (tiposList || []).find(t => t.id === cita?.tipo_visita_id)
         }));
-    }, [currentTecnicoId, allCitas]);
+    }, [currentTecnicoId, allCitas, pacientesList, tiposList]);
 
     const patientHistory = useMemo(() => {
         if (!selectedCita?.paciente_id) return [];
@@ -106,11 +129,12 @@ export default function Dashboard() {
         setIsNotesModalOpen(true);
     };
 
-    const handleSaveNotes = () => {
-        update('citas', selectedCita.id, { notas_visita: visitNotes });
-        setAllCitas(getAll('citas'));
+    const handleSaveNotes = async () => {
+        const { error } = await supabase.from('citas').update({ notas_visita: visitNotes }).eq('id', selectedCita.id);
+        if (error) { toast.error(error.message); return; }
         setIsNotesModalOpen(false);
         toast.success('Datos de la visita guardados correctamente');
+        fetchDashboardData();
     };
 
     return (

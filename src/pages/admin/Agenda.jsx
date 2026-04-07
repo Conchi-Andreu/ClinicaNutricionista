@@ -23,7 +23,7 @@ import {
     FileEdit,
     CreditCard
 } from 'lucide-react';
-import { getAll, update } from '../../store/db';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthContext';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
@@ -48,26 +48,38 @@ export default function Agenda() {
     const [slots, setSlots] = useState([]);
     const [citas, setCitas] = useState([]);
     const [pacientes, setPacientes] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
 
-    const loadData = () => {
-        const allTecs = getAll('tecnicos');
+    const loadData = async () => {
+        setIsLoading(true);
+        const [tecRes, cenRes, tiposRes, slotsRes, citasRes, pacRes] = await Promise.all([
+            supabase.from('tecnicos').select('*'),
+            supabase.from('centros_salas').select('*').eq('activo', true),
+            supabase.from('tipos_visita').select('*'),
+            supabase.from('disponibilidad_slots').select('*'),
+            supabase.from('citas').select('*'),
+            supabase.from('pacientes').select('*')
+        ]);
+
+        const allTecs = tecRes.data || [];
         setTecnicos(allTecs);
-        setCentros(getAll('centros_salas').filter(c => c.activo));
-        setTipos(getAll('tipos_visita'));
-        setSlots(getAll('disponibilidad_slots'));
-        setCitas(getAll('citas'));
-        setPacientes(getAll('pacientes'));
+        setCentros(cenRes.data || []);
+        setTipos(tiposRes.data || []);
+        setSlots(slotsRes.data || []);
+        setCitas(citasRes.data || []);
+        setPacientes(pacRes.data || []);
 
         if (user?.rol === 'tecnico') {
             const tec = allTecs.find(t => t.usuario_id === user.id || t.email === user.email);
             if (tec) setFilterTecnico(tec.id);
         }
+        setIsLoading(false);
     };
 
     // Load data on mount
     React.useEffect(() => {
         loadData();
-    }, []);
+    }, [user]);
 
     // Load events (slots + citas)
     const events = useMemo(() => {
@@ -176,9 +188,11 @@ export default function Agenda() {
             .sort((a, b) => a.fecha_hora_inicio.localeCompare(b.fecha_hora_inicio));
     }, [selectedEvent, citas]);
 
-    const handleTogglePago = (cita) => {
+    const handleTogglePago = async (cita) => {
         const nuevoEstadoPago = !cita.pagado;
-        update('citas', cita.id, { pagado: nuevoEstadoPago });
+        const { error } = await supabase.from('citas').update({ pagado: nuevoEstadoPago }).eq('id', cita.id);
+        if (error) { toast.error(error.message); return; }
+        
         loadData(); // Reload all agenda data
         // Update selected event locally to reflect change immediately in modal
         setSelectedEvent(prev => ({ ...prev, pagado: nuevoEstadoPago }));
@@ -192,8 +206,10 @@ export default function Agenda() {
         setIsNotesModalOpen(true);
     };
 
-    const handleSaveNotes = () => {
-        update('citas', selectedEvent.id, { notas_visita: visitNotes });
+    const handleSaveNotes = async () => {
+        const { error } = await supabase.from('citas').update({ notas_visita: visitNotes }).eq('id', selectedEvent.id);
+        if (error) { toast.error(error.message); return; }
+        
         loadData();
         setIsNotesModalOpen(false);
         toast.success('Datos de la visita guardados correctamente');
