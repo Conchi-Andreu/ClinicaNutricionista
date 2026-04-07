@@ -1,11 +1,11 @@
 import React, { useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getAll } from '../../store/db';
+import { useSiteConfig } from '../../context/SiteConfigContext';
 import { ChevronLeft, Shield, FileText, Lock } from 'lucide-react';
 
 export default function PaginaLegal() {
     const { tipo } = useParams();
-    const config = getAll('site_config')[0];
+    const { config } = useSiteConfig();
 
     useEffect(() => {
         window.scrollTo(0, 0);

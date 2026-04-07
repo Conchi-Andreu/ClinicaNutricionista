@@ -1,8 +1,8 @@
 import React from 'react';
-import { getAll } from '../../store/db';
+import { useSiteConfig } from '../../context/SiteConfigContext';
 
 export default function QuienSoy() {
-    const config = getAll('site_config')[0];
+    const { config } = useSiteConfig();
 
     if (!config) return <div className="p-8 text-center text-gray-500 font-medium">Cargando información...</div>;
 

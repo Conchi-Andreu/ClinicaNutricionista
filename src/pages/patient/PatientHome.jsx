@@ -4,11 +4,11 @@ import BookingWizard from './BookingWizard';
 import Login from '../Login';
 import { Info, MapPin, Calendar as CalendarIcon, ArrowRight, User } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { getAll } from '../../store/db';
+import { useSiteConfig } from '../../context/SiteConfigContext';
 
 export default function PatientHome() {
     const { user } = useAuth();
-    const siteConfig = getAll('site_config')[0] || {};
+    const { config: siteConfig } = useSiteConfig();
 
     if (user && user.rol === 'paciente') {
         return <BookingWizard />;

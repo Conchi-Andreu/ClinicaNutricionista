@@ -11,24 +11,40 @@ import {
     Phone,
     Shield
 } from 'lucide-react';
-import { getAll, saveAll } from '../../store/db';
+import { useSiteConfig } from '../../context/SiteConfigContext';
+import { supabase } from '../../lib/supabase';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import { toast } from 'react-hot-toast';
 
 export default function GeneralConfig() {
+    const { config: globalConfig, refreshConfig } = useSiteConfig();
     const [config, setConfig] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        const data = getAll('site_config')[0];
-        if (data) setConfig(data);
-        setLoading(false);
-    }, []);
+        if (globalConfig && Object.keys(globalConfig).length > 0) {
+            setConfig(globalConfig);
+        }
+    }, [globalConfig]);
 
-    const handleSave = () => {
-        saveAll('site_config', [config]);
-        toast.success('Configuración guardada correctamente');
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            const { error } = await supabase
+                .from('site_config')
+                .update(config)
+                .eq('id', 'global-config');
+            
+            if (error) throw error;
+            toast.success('Configuración guardada correctamente');
+            refreshConfig();
+        } catch (error) {
+            console.error(error);
+            toast.error('Error al guardar configuración');
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleFileUpload = (e, field) => {
@@ -53,7 +69,7 @@ export default function GeneralConfig() {
                     <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">Configuración General</h2>
                     <p className="text-gray-500 mt-1 font-medium">Personaliza la identidad visual y contenidos de tu clínica</p>
                 </div>
-                <Button onClick={handleSave} icon={Save} size="lg">Guardar Cambios</Button>
+                <Button onClick={handleSave} loading={saving} icon={Save} size="lg">Guardar Cambios</Button>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

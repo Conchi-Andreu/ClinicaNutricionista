@@ -15,14 +15,14 @@ import {
     ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
-import { getAll } from '../store/db';
+import { useSiteConfig } from '../context/SiteConfigContext';
 
 export default function AdminLayout() {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-    const siteConfig = getAll('site_config')[0] || {};
+    const { config: siteConfig } = useSiteConfig();
 
     const handleLogout = () => {
         logout();

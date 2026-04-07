@@ -18,10 +18,11 @@ import Modal from '../../components/Modal';
 import { update } from '../../store/db';
 import { toast } from 'react-hot-toast';
 import { History, FileEdit } from 'lucide-react';
+import { useSiteConfig } from '../../context/SiteConfigContext';
 
 export default function Dashboard() {
     const { user } = useAuth();
-    const siteConfig = getAll('site_config')[0] || {};
+    const { config: siteConfig } = useSiteConfig();
     const [isNotesModalOpen, setIsNotesModalOpen] = React.useState(false);
     const [selectedCita, setSelectedCita] = React.useState(null);
     const [visitNotes, setVisitNotes] = React.useState('');

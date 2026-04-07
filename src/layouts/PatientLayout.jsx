@@ -2,12 +2,12 @@ import React from 'react';
 import { Outlet, useNavigate, Link } from 'react-router-dom';
 import { LogOut, Calendar, User, ChevronLeft, Info, HelpCircle, Phone } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
-import { getAll } from '../store/db';
+import { useSiteConfig } from '../context/SiteConfigContext';
 
 export default function PatientLayout() {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
-    const siteConfig = getAll('site_config')[0] || {};
+    const { config: siteConfig } = useSiteConfig();
 
     const handleLogout = () => {
         logout();

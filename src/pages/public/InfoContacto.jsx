@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getAll } from '../../store/db';
+import { useSiteConfig } from '../../context/SiteConfigContext';
 import { Link } from 'react-router-dom';
 import { Phone, Mail, MapPin, Send } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
@@ -10,7 +10,7 @@ import { toast } from 'react-hot-toast';
 
 export default function InfoContacto() {
     const { user } = useAuth();
-    const config = getAll('site_config')[0];
+    const { config } = useSiteConfig();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [sending, setSending] = useState(false);
     const [formData, setFormData] = useState({
