@@ -18,7 +18,7 @@ import Input from '../../components/Input';
 import { toast } from 'react-hot-toast';
 
 export default function GeneralConfig() {
-    const { config: globalConfig, refreshConfig } = useSiteConfig();
+    const { config: globalConfig, refreshConfig, loading } = useSiteConfig();
     const [config, setConfig] = useState(null);
     const [saving, setSaving] = useState(false);
 
