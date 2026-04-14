@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, Shield, User as UserIcon, ShieldCheck, Mail, Phone, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import Button from '../../components/Button';
