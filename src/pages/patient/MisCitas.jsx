@@ -212,7 +212,7 @@ export default function MisCitas() {
                         </div>
                         <h4 className="text-gray-500 font-bold">No tienes próximas citas</h4>
                         <p className="text-gray-400 text-sm mt-1 mb-8">¿Necesitas una revisión? Reserva un nuevo hueco ahora.</p>
-                        <Button onClick={() => window.location.href = '/paciente'}>Reservar Cita Ahora</Button>
+                        <Button onClick={() => navigate('/paciente')}>Reservar Cita Ahora</Button>
                     </div>
                 )}
             </section>

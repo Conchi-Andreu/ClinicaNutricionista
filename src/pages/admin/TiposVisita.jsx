@@ -8,8 +8,9 @@ import {
     Tag,
     Palette
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { getAll, create, update, remove } from '../../lib/database';
 import Button from '../../components/Button';
+import Badge from '../../components/Badge';
 import Input from '../../components/Input';
 import Modal from '../../components/Modal';
 import { toast } from 'react-hot-toast';
@@ -33,11 +34,11 @@ export default function TiposVisita() {
 
     const fetchTiposVisita = async () => {
         setIsLoading(true);
-        const { data, error } = await supabase.from('tipos_visita').select('*').order('createdAt', { ascending: false });
-        if (error) {
-            toast.error('Error al cargar servicios: ' + error.message);
-        } else {
+        try {
+            const data = await getAll('tipos_visita');
             setItems(data || []);
+        } catch (error) {
+            toast.error('Error al cargar servicios: ' + error.message);
         }
         setIsLoading(false);
     };
@@ -51,8 +52,8 @@ export default function TiposVisita() {
 
     const filteredItems = useMemo(() => {
         return items.filter(item =>
-            item.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            item.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
+            (item.nombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.descripcion || '').toLowerCase().includes(searchTerm.toLowerCase())
         );
     }, [items, searchTerm]);
 
@@ -75,34 +76,29 @@ export default function TiposVisita() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         
-        if (editingItem) {
-            const { error } = await supabase.from('tipos_visita').update(formData).eq('id', editingItem.id);
-            if (error) {
-                toast.error('Error al actualizar: ' + error.message);
-                return;
+        try {
+            if (editingItem) {
+                await update('tipos_visita', editingItem.id, formData);
+                toast.success('Servicio actualizado');
+            } else {
+                await create('tipos_visita', formData);
+                toast.success('Servicio creado');
             }
-            toast.success('Servicio actualizado');
-        } else {
-            const { error } = await supabase.from('tipos_visita').insert([formData]);
-            if (error) {
-                toast.error('Error al crear: ' + error.message);
-                return;
-            }
-            toast.success('Servicio creado');
+            fetchTiposVisita();
+            setIsModalOpen(false);
+        } catch (error) {
+            toast.error('Error al guardar: ' + error.message);
         }
-        
-        fetchTiposVisita();
-        setIsModalOpen(false);
     };
 
     const handleDelete = async (id) => {
         if (window.confirm('¿Eliminar este tipo de visita?')) {
-            const { error } = await supabase.from('tipos_visita').delete().eq('id', id);
-            if (error) {
-                toast.error('Error al eliminar: ' + error.message);
-            } else {
+            try {
+                await remove('tipos_visita', id);
                 toast.success('Servicio eliminado');
                 fetchTiposVisita();
+            } catch (error) {
+                toast.error('Error al eliminar: ' + error.message);
             }
         }
     };

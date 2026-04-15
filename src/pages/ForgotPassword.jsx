@@ -36,10 +36,10 @@ export default function ForgotPassword() {
                     <div className="w-20 h-20 bg-primary-100 text-primary-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner">
                         <CheckCircle2 size={40} />
                     </div>
-                    <h2 className="text-3xl font-extrabold text-gray-900 mb-4">Revisa tu consola</h2>
+                    <h2 className="text-3xl font-extrabold text-gray-900 mb-4">Revisa tu email</h2>
                     <p className="text-gray-500 font-medium leading-relaxed mb-8">
-                        Si el email <span className="text-primary-600 font-bold">{email}</span> está registrado, hemos generado un enlace de recuperación.
-                        Por favor, consulta la consola del navegador (F12) para ver el enlace simulado.
+                        Si el email <span className="text-primary-600 font-bold">{email}</span> está registrado, hemos enviado un enlace de recuperación.
+                        Por favor, consulta tu bandeja de entrada y sigue las instrucciones.
                     </p>
                     <Link to="/login" className="block w-full">
                         <Button variant="secondary" className="w-full h-14">

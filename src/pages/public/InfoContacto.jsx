@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { create } from '../../lib/database';
 import { useSiteConfig } from '../../context/SiteConfigContext';
 import { Link } from 'react-router-dom';
 import { Phone, Mail, MapPin, Send } from 'lucide-react';
@@ -26,24 +27,26 @@ export default function InfoContacto() {
         lineHeight: config.contactoHeight
     };
 
-    const handleSend = (e) => {
+    const handleSend = async (e) => {
         e.preventDefault();
         setSending(true);
 
-        // Simulación de envío de email
-        setTimeout(() => {
-            console.log('--- SIMULACIÓN DE ENVÍO DE EMAIL ---');
-            console.log(`De: ${formData.email}`);
-            console.log(`Para: ${config.contactoEmail}`);
-            console.log(`Asunto: ${formData.asunto}`);
-            console.log(`Mensaje: ${formData.mensaje}`);
-            console.log('------------------------------------');
+        try {
+            await create('mensajes', {
+                email: formData.email,
+                asunto: formData.asunto,
+                mensaje: formData.mensaje
+            });
 
-            setSending(false);
             setIsModalOpen(false);
             setFormData({ ...formData, asunto: '', mensaje: '' });
             toast.success('Mensaje enviado correctamente. Te responderemos pronto.');
-        }, 1500);
+        } catch (error) {
+            console.error('Error al enviar mensaje:', error);
+            toast.error('Hubo un error al enviar el mensaje. Inténtalo de nuevo.');
+        } finally {
+            setSending(false);
+        }
     };
 
     return (

@@ -1,115 +1,108 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
 
 const AuthContext = createContext(null);
+const API_URL = import.meta.env.VITE_API_URL || 'https://www.gemmapascual.es/Programacion/api/api.php';
 
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    const loadProfile = async (authUser) => {
-        if (!authUser) {
-           setUser(null);
-           setLoading(false);
-           return;
-        }
-
-        const { data: profile } = await supabase
-            .from('usuarios')
-            .select('*')
-            .eq('email', authUser.email)
-            .single();
+    useEffect(() => {
+        const storedUser = localStorage.getItem('auth_user');
+        const token = localStorage.getItem('auth_token');
         
-        if (profile) {
-            setUser({ ...authUser, ...profile });
-        } else {
-            setUser(null); 
+        if (storedUser && token) {
+            setUser(JSON.parse(storedUser));
         }
         setLoading(false);
-    };
-
-    useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            loadProfile(session?.user);
-        });
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            loadProfile(session?.user);
-        });
-
-        return () => subscription.unsubscribe();
     }, []);
 
     const login = async (email, password) => {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) return { success: false, error: 'Credenciales incorrectas o email sin verificar.' };
-        return { success: true };
+        try {
+            const response = await fetch(`${API_URL}?path=login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                return { success: false, error: error.error || 'Error de conexión' };
+            }
+
+            const data = await response.json();
+            localStorage.setItem('auth_token', data.token);
+            localStorage.setItem('auth_user', JSON.stringify(data.user));
+            setUser(data.user);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: 'No se pudo conectar con el servidor.' };
+        }
     };
 
     const register = async ({ nombre, apellidos, email, password, telefono }) => {
-        const { data, error } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-                data: { nombre, apellidos, telefono }
+        try {
+            // Note: In a real app, registration should be a specific endpoint that hashes the password
+            // For now, we'll assume the API has a /register endpoint or handles hashing if we send it to usuarios
+            const response = await fetch(`${API_URL}?path=register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nombre, apellidos, email, password, telefono, rol: 'paciente' })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                return { success: false, error: error.error || 'Error al registrarse' };
             }
-        });
 
-        if (error) return { success: false, error: 'Este email ya está en uso o es inválido.' };
-
-        if (data.user) {
-            // Check if profile exists across race conditions
-            const { data: existing } = await supabase.from('usuarios').select('id').eq('email', email).single();
-            if (!existing) {
-                await supabase.from('usuarios').insert({
-                    usuario_id: data.user.id,
-                    nombre,
-                    apellidos,
-                    email,
-                    telefono,
-                    rol: 'paciente',
-                    activo: true
-                });
-
-                await supabase.from('pacientes').insert({
-                    usuario_id: data.user.id,
-                    nombre,
-                    apellidos,
-                    email,
-                    telefono
-                });
-            }
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: 'Error de red.' };
         }
-
-        return { success: true, needsEmailVerification: !data.session };
     };
 
     const logout = async () => {
-        await supabase.auth.signOut();
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('auth_user');
         setUser(null);
     };
 
-    const verifyEmail = () => { return { success: true }; }; // Supabase Magic Link handles this
+    const verifyEmail = () => { return { success: true }; }; 
 
     const requestPasswordReset = async (email) => {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: `${window.location.origin}/reset-password`,
-        });
-        if (error) return { success: false, error: error.message };
-        return { success: true };
+        try {
+            const response = await fetch(`${API_URL}?path=request-password-reset`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            return { success: true }; // Always return success for security
+        } catch (error) {
+            return { success: false, error: 'Error de red.' };
+        }
     };
 
     const resetPassword = async (token, newPassword) => {
-        // Note: With supabase, token isn't manually verified here if using magic links properly,
-        // but if using updateUser, the session is already active via the link!
-        const { error } = await supabase.auth.updateUser({ password: newPassword });
-        if (error) return { success: false, error: error.message };
-        return { success: true };
+        try {
+            const response = await fetch(`${API_URL}?path=reset-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, password: newPassword })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                return { success: false, error: error.error || 'Error al restablecer' };
+            }
+
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: 'Error de red.' };
+        }
     };
 
     const refreshUser = async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        await loadProfile(session?.user);
+        // Podríamos tener un endpoint /me
     };
 
     return (
@@ -127,3 +120,4 @@ export function useAuth() {
     if (!ctx) throw new Error('useAuth must be used within AuthProvider');
     return ctx;
 }
+

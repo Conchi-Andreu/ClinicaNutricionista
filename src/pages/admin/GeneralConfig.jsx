@@ -12,7 +12,7 @@ import {
     Shield
 } from 'lucide-react';
 import { useSiteConfig } from '../../context/SiteConfigContext';
-import { supabase } from '../../lib/supabase';
+import { update } from '../../lib/database';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import { toast } from 'react-hot-toast';
@@ -31,17 +31,12 @@ export default function GeneralConfig() {
     const handleSave = async () => {
         setSaving(true);
         try {
-            const { error } = await supabase
-                .from('site_config')
-                .update(config)
-                .eq('id', 'global-config');
-            
-            if (error) throw error;
+            await update('site_config', 'global-config', config);
             toast.success('Configuración guardada correctamente');
             refreshConfig();
         } catch (error) {
             console.error(error);
-            toast.error('Error al guardar configuración');
+            toast.error('Error al guardar configuración: ' + error.message);
         } finally {
             setSaving(false);
         }

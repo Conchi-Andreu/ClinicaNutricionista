@@ -34,7 +34,7 @@ export default function ResetPassword() {
         setLoading(true);
         await new Promise(r => setTimeout(r, 1000));
 
-        const res = await resetPassword(null, formData.password);
+        const res = await resetPassword(token, formData.password);
         if (res.success) {
             setStatus('success');
             toast.success('Contraseña actualizada correctamente');

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
@@ -32,6 +32,7 @@ export default function BookingWizard() {
     const { user } = useAuth();
     const location = useLocation();
     const rescheduleCitaId = location.state?.rescheduleCitaId;
+    const navigate = useNavigate();
     const [step, setStep] = useState(1);
 
     // State for selections
@@ -499,7 +500,7 @@ export default function BookingWizard() {
                     </p>
 
                     <div className="mt-12 space-y-3">
-                        <Button className="w-full h-12" onClick={() => window.location.href = '/paciente/mis-citas'}>Ver mis citas</Button>
+                        <Button className="w-full h-12" onClick={() => navigate('/paciente/mis-citas')}>Ver mis citas</Button>
                         <Button variant="ghost" className="w-full h-12" onClick={() => { setStep(1); setSelectedTipo(null); setSelectedDate(null); setSelectedSlot(null); setNotas(''); }}>Reservar otra cita</Button>
                     </div>
                 </div>

@@ -23,7 +23,7 @@ import {
     FileEdit,
     CreditCard
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { getAll, update } from '../../lib/database';
 import { useAuth } from '../../auth/AuthContext';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
@@ -52,26 +52,30 @@ export default function Agenda() {
 
     const loadData = async () => {
         setIsLoading(true);
-        const [tecRes, cenRes, tiposRes, slotsRes, citasRes, pacRes] = await Promise.all([
-            supabase.from('tecnicos').select('*'),
-            supabase.from('centros_salas').select('*').eq('activo', true),
-            supabase.from('tipos_visita').select('*'),
-            supabase.from('disponibilidad_slots').select('*'),
-            supabase.from('citas').select('*'),
-            supabase.from('pacientes').select('*')
-        ]);
+        try {
+            const [tecRes, cenRes, tiposRes, slotsRes, citasRes, pacRes] = await Promise.all([
+                getAll('tecnicos'),
+                getAll('centros_salas&activo=1'),
+                getAll('tipos_visita'),
+                getAll('disponibilidad_slots'),
+                getAll('citas'),
+                getAll('pacientes')
+            ]);
 
-        const allTecs = tecRes.data || [];
-        setTecnicos(allTecs);
-        setCentros(cenRes.data || []);
-        setTipos(tiposRes.data || []);
-        setSlots(slotsRes.data || []);
-        setCitas(citasRes.data || []);
-        setPacientes(pacRes.data || []);
+            const allTecs = tecRes || [];
+            setTecnicos(allTecs);
+            setCentros(cenRes || []);
+            setTipos(tiposRes || []);
+            setSlots(slotsRes || []);
+            setCitas(citasRes || []);
+            setPacientes(pacRes || []);
 
-        if (user?.rol === 'tecnico') {
-            const tec = allTecs.find(t => t.usuario_id === user.id || t.email === user.email);
-            if (tec) setFilterTecnico(tec.id);
+            if (user?.rol === 'tecnico') {
+                const tec = allTecs.find(t => String(t.usuario_id) === String(user.id) || t.email === user.email);
+                if (tec) setFilterTecnico(tec.id);
+            }
+        } catch (error) {
+            toast.error('Error al cargar la agenda');
         }
         setIsLoading(false);
     };
@@ -190,13 +194,15 @@ export default function Agenda() {
 
     const handleTogglePago = async (cita) => {
         const nuevoEstadoPago = !cita.pagado;
-        const { error } = await supabase.from('citas').update({ pagado: nuevoEstadoPago }).eq('id', cita.id);
-        if (error) { toast.error(error.message); return; }
-        
-        loadData(); // Reload all agenda data
-        // Update selected event locally to reflect change immediately in modal
-        setSelectedEvent(prev => ({ ...prev, pagado: nuevoEstadoPago }));
-        toast.success(nuevoEstadoPago ? 'Cita marcada como PAGADA' : 'Cita marcada como PENDIENTE DE PAGO');
+        try {
+            await update('citas', cita.id, { pagado: nuevoEstadoPago });
+            loadData(); // Reload all agenda data
+            // Update selected event locally to reflect change immediately in modal
+            setSelectedEvent(prev => ({ ...prev, pagado: nuevoEstadoPago }));
+            toast.success(nuevoEstadoPago ? 'Cita marcada como PAGADA' : 'Cita marcada como PENDIENTE DE PAGO');
+        } catch (error) {
+            toast.error('Error: ' + error.message);
+        }
     };
 
     const handleOpenNotes = (cita) => {
@@ -207,12 +213,14 @@ export default function Agenda() {
     };
 
     const handleSaveNotes = async () => {
-        const { error } = await supabase.from('citas').update({ notas_visita: visitNotes }).eq('id', selectedEvent.id);
-        if (error) { toast.error(error.message); return; }
-        
-        loadData();
-        setIsNotesModalOpen(false);
-        toast.success('Datos de la visita guardados correctamente');
+        try {
+            await update('citas', selectedEvent.id, { notas_visita: visitNotes });
+            loadData();
+            setIsNotesModalOpen(false);
+            toast.success('Datos de la visita guardados correctamente');
+        } catch (error) {
+            toast.error('Error: ' + error.message);
+        }
     };
 
     const next = () => calendarRef.current.getApi().next();

@@ -12,7 +12,8 @@ import {
     Menu,
     X,
     User,
-    ShieldCheck
+    ShieldCheck,
+    Mail
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useSiteConfig } from '../context/SiteConfigContext';
@@ -41,6 +42,7 @@ export default function AdminLayout() {
         { to: '/admin/centros', icon: MapPin, label: 'Centros / Salas', roles: ['admin'] },
         { to: '/admin/tipos-visita', icon: Settings, label: 'Tipos de Visita', roles: ['admin'] },
         { to: '/admin/usuarios', icon: ShieldCheck, label: 'Usuarios', roles: ['admin'] },
+        { to: '/admin/mensajes', icon: Mail, label: 'Mensajes', roles: ['admin'] },
     ].filter(item => !item.roles || item.roles.some(r => r === user?.rol));
 
     return (

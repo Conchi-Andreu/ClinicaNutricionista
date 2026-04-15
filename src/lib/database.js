@@ -1,91 +1,82 @@
-import { supabase } from './supabase';
+const API_URL = import.meta.env.VITE_API_URL || 'https://www.gemmapascual.es/Programacion/api/api.php';
+
+async function apiRequest(endpoint, options = {}) {
+    const token = localStorage.getItem('auth_token');
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        ...options.headers
+    };
+
+    const response = await fetch(`${API_URL}${endpoint}`, {
+        ...options,
+        headers
+    });
+
+    if (!response.ok) {
+        if (response.status === 401) {
+            localStorage.removeItem('auth_token');
+            window.location.href = '/Programacion/login';
+        }
+        const error = await response.json();
+        throw new Error(error.error || 'Error en la petición API');
+    }
+
+    return response.json();
+}
 
 /**
- * Capa de abstracción para la base de datos de Supabase.
- * Emula las funciones de db.js para facilitar la migración.
+ * Capa de abstracción para la base de datos MySQL vía PHP API.
  */
 
 export async function getAll(table) {
-    const { data, error } = await supabase
-        .from(table)
-        .select('*');
-
-    if (error) {
+    try {
+        return await apiRequest(`?table=${table}`);
+    } catch (error) {
         console.error(`Error al obtener datos de ${table}:`, error);
         return [];
     }
-    return data;
 }
 
 export async function getById(table, id) {
-    const { data, error } = await supabase
-        .from(table)
-        .select('*')
-        .eq('id', id)
-        .single();
-
-    if (error) {
+    try {
+        return await apiRequest(`?table=${table}&id=${id}`);
+    } catch (error) {
         console.error(`Error al obtener item de ${table}:`, error);
         return null;
     }
-    return data;
 }
 
 export async function create(table, itemData) {
-    const { data, error } = await supabase
-        .from(table)
-        .insert([itemData])
-        .select()
-        .single();
-
-    if (error) {
-        console.error(`Error al crear en ${table}:`, error);
-        throw error;
-    }
-    return data;
+    const result = await apiRequest(`?table=${table}`, {
+        method: 'POST',
+        body: JSON.stringify(itemData)
+    });
+    return result;
 }
 
 export async function update(table, id, itemData) {
-    const { data, error } = await supabase
-        .from(table)
-        .update(itemData)
-        .eq('id', id)
-        .select()
-        .single();
-
-    if (error) {
-        console.error(`Error al actualizar en ${table}:`, error);
-        throw error;
-    }
-    return data;
+    const result = await apiRequest(`?table=${table}&id=${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(itemData)
+    });
+    return result;
 }
 
 export async function remove(table, id) {
-    const { error } = await supabase
-        .from(table)
-        .delete()
-        .eq('id', id);
-
-    if (error) {
-        console.error(`Error al eliminar en ${table}:`, error);
-        throw error;
-    }
+    return await apiRequest(`?table=${table}&id=${id}`, {
+        method: 'DELETE'
+    });
 }
 
 // Funciones específicas para la lógica de la clínica
 
 export async function getSlotsDisponibles(tecnicoId, centroId, fecha) {
-    const { data, error } = await supabase
-        .from('disponibilidad_slots')
-        .select('*')
-        .eq('tecnico_id', tecnicoId)
-        .eq('centro_id', centroId)
-        .eq('fecha', fecha)
-        .eq('estado', 'libre');
-
-    if (error) {
+    try {
+        return await apiRequest(`?table=disponibilidad_slots&tecnico_id=${tecnicoId}&centro_id=${centroId}&fecha=${fecha}&estado=libre`);
+    } catch (error) {
         console.error('Error al obtener slots:', error);
         return [];
     }
-    return data;
 }
+

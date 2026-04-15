@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Mail, Shield, Lock, Key, CheckCircle2, AlertCircle, Briefcase, FileText } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { getAll, create, update } from '../../lib/database';
 import { useAuth } from '../../auth/AuthContext';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
@@ -37,12 +37,17 @@ export default function Perfil() {
     useEffect(() => {
         const loadTechData = async () => {
             if (user?.rol === 'tecnico') {
-                const { data: tec } = await supabase.from('tecnicos').select('*').eq('usuario_id', user.id).single();
-                if (tec) {
-                    setTecnicoData({
-                        especialidad: tec.especialidad || '',
-                        bio: tec.bio || ''
-                    });
+                try {
+                    const tecs = await getAll(`tecnicos&usuario_id=${user.id}`);
+                    const tec = tecs && tecs.length > 0 ? tecs[0] : null;
+                    if (tec) {
+                        setTecnicoData({
+                            especialidad: tec.especialidad || '',
+                            bio: tec.bio || ''
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error al cargar datos técnicos:', error);
                 }
             }
         };
@@ -57,18 +62,17 @@ export default function Perfil() {
             if (!user?.id) throw new Error('Usuario no identificado');
 
             // Update user record
-            const { error: userError } = await supabase.from('usuarios').update({
+            await update('usuarios', user.id, {
                 nombre: formData.nombre,
                 apellidos: formData.apellidos
-            }).eq('id', user.id);
-
-            if (userError) throw userError;
+            });
 
             // Update technician record if applicable
             if (user.rol === 'tecnico') {
-                const { data: tec } = await supabase.from('tecnicos').select('id').eq('usuario_id', user.id).single();
+                const tecs = await getAll(`tecnicos&usuario_id=${user.id}`);
+                const existingTec = tecs && tecs.length > 0 ? tecs[0] : null;
 
-                const techData = {
+                const techRecord = {
                     nombre: formData.nombre,
                     apellidos: formData.apellidos,
                     email: formData.email,
@@ -77,19 +81,23 @@ export default function Perfil() {
                     usuario_id: user.id
                 };
 
-                if (tec) {
-                    await supabase.from('tecnicos').update(techData).eq('id', tec.id);
+                if (existingTec) {
+                    await update('tecnicos', existingTec.id, techRecord);
                 } else {
-                    await supabase.from('tecnicos').insert([techData]);
+                    await create('tecnicos', techRecord);
                 }
             }
 
             // Also update patient record if applicable (sync name)
             if (user.rol === 'paciente') {
-                await supabase.from('pacientes').update({
-                    nombre: formData.nombre,
-                    apellidos: formData.apellidos
-                }).eq('usuario_id', user.id);
+                const patients = await getAll(`pacientes&usuario_id=${user.id}`);
+                const existingPatient = patients && patients.length > 0 ? patients[0] : null;
+                if (existingPatient) {
+                    await update('pacientes', existingPatient.id, {
+                        nombre: formData.nombre,
+                        apellidos: formData.apellidos
+                    });
+                }
             }
 
             refreshUser();
@@ -104,14 +112,15 @@ export default function Perfil() {
 
     const handleVerifyCurrentPassword = async (e) => {
         e.preventDefault();
-        // Con base de datos real, idealmente deberíamos re-autenticar o verificar contra Supabase Auth.
-        // Como estamos haciendo una migración visual de DB, verificaremos si la currentPassword coincide con la que tenemos.
-        // Nota: en Supabase real usaríamos updateUser(). 
-        const { data: dbUser } = await supabase.from('usuarios').select('password').eq('id', user.id).single();
-        if (!dbUser || dbUser.password !== pwData.currentPassword) {
-            return toast.error('La contraseña actual es incorrecta');
+        try {
+            const dbUser = await getById('usuarios', user.id);
+            if (!dbUser || dbUser.password !== pwData.currentPassword) {
+                return toast.error('La contraseña actual es incorrecta');
+            }
+            setPwStep(1);
+        } catch (error) {
+            toast.error('Error al verificar contraseña');
         }
-        setPwStep(1);
     };
 
     const handleStartCodeVerification = (e) => {
@@ -138,16 +147,15 @@ export default function Perfil() {
         if (!verificationCode) return toast.error('Introduce el código');
         if (verificationCode !== mockCode) return toast.error('Código incorrecto');
 
-        const { error } = await supabase.from('usuarios').update({ password: pwData.newPassword }).eq('id', user.id);
-        
-        if (!error) {
+        try {
+            await update('usuarios', user.id, { password: pwData.newPassword });
             toast.success('Contraseña actualizada correctamente');
             setIsPwModalOpen(false);
             setPwStep(0);
             setPwData({ currentPassword: '', newPassword: '', confirmPassword: '' });
             setVerificationCode('');
-        } else {
-            toast.error(error.message);
+        } catch (error) {
+            toast.error('Error al actualizar: ' + error.message);
         }
     };
 

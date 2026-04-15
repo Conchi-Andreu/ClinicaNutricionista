@@ -10,7 +10,7 @@ import {
     XCircle,
     Building2
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { getAll, create, update, remove } from '../../lib/database';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import Modal from '../../components/Modal';
@@ -30,11 +30,11 @@ export default function Centros() {
 
     const fetchCentros = async () => {
         setIsLoading(true);
-        const { data, error } = await supabase.from('centros_salas').select('*').order('createdAt', { ascending: false });
-        if (error) {
-            toast.error('Error al cargar centros: ' + error.message);
-        } else {
+        try {
+            const data = await getAll('centros_salas');
             setItems(data || []);
+        } catch (error) {
+            toast.error('Error al cargar centros: ' + error.message);
         }
         setIsLoading(false);
     };
@@ -50,8 +50,8 @@ export default function Centros() {
 
     const filteredItems = useMemo(() => {
         return items.filter(item =>
-            item.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            item.direccion.toLowerCase().includes(searchTerm.toLowerCase())
+            (item.nombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.direccion || '').toLowerCase().includes(searchTerm.toLowerCase())
         );
     }, [items, searchTerm]);
 
@@ -76,45 +76,40 @@ export default function Centros() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         
-        if (editingItem) {
-            const { error } = await supabase.from('centros_salas').update(formData).eq('id', editingItem.id);
-            if (error) {
-                toast.error('Error al actualizar: ' + error.message);
-                return;
+        try {
+            if (editingItem) {
+                await update('centros_salas', editingItem.id, formData);
+                toast.success('Centro actualizado');
+            } else {
+                await create('centros_salas', formData);
+                toast.success('Centro creado');
             }
-            toast.success('Centro actualizado');
-        } else {
-            const { error } = await supabase.from('centros_salas').insert([formData]);
-            if (error) {
-                toast.error('Error al crear: ' + error.message);
-                return;
-            }
-            toast.success('Centro creado');
+            fetchCentros();
+            setIsModalOpen(false);
+        } catch (error) {
+            toast.error('Error al guardar: ' + error.message);
         }
-        
-        fetchCentros();
-        setIsModalOpen(false);
     };
 
     const handleDelete = async (id) => {
         if (window.confirm('¿Eliminar este centro? Se perderán las relaciones de disponibilidad.')) {
-            const { error } = await supabase.from('centros_salas').delete().eq('id', id);
-            if (error) {
-                toast.error('Error al eliminar: ' + error.message);
-            } else {
+            try {
+                await remove('centros_salas', id);
                 toast.success('Centro eliminado');
                 fetchCentros();
+            } catch (error) {
+                toast.error('Error al eliminar: ' + error.message);
             }
         }
     };
 
     const toggleStatus = async (item) => {
-        const { error } = await supabase.from('centros_salas').update({ activo: !item.activo }).eq('id', item.id);
-        if (error) {
-            toast.error('Error: ' + error.message);
-        } else {
+        try {
+            await update('centros_salas', item.id, { activo: item.activo ? 0 : 1 });
             toast.success(`Centro ${!item.activo ? 'activado' : 'desactivado'}`);
             fetchCentros();
+        } catch (error) {
+            toast.error('Error: ' + error.message);
         }
     };
 

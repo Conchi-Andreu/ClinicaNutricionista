@@ -9,7 +9,7 @@ import {
     Camera,
     User as UserIcon
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { getAll, create, update, remove } from '../../lib/database';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import Modal from '../../components/Modal';
@@ -29,11 +29,11 @@ export default function Tecnicos() {
 
     const fetchTecnicos = async () => {
         setIsLoading(true);
-        const { data, error } = await supabase.from('tecnicos').select('*').order('createdAt', { ascending: false });
-        if (error) {
-            toast.error('Error al cargar técnicos: ' + error.message);
-        } else {
+        try {
+            const data = await getAll('tecnicos');
             setItems(data || []);
+        } catch (error) {
+            toast.error('Error al cargar técnicos: ' + error.message);
         }
         setIsLoading(false);
     };
@@ -49,9 +49,9 @@ export default function Tecnicos() {
 
     const filteredItems = useMemo(() => {
         return items.filter(item =>
-            `${item.nombre} ${item.apellidos}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            item.especialidad.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            item.email.toLowerCase().includes(searchTerm.toLowerCase())
+            (`${item.nombre} ${item.apellidos}`).toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.especialidad || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.email || '').toLowerCase().includes(searchTerm.toLowerCase())
         );
     }, [items, searchTerm]);
 
@@ -76,34 +76,29 @@ export default function Tecnicos() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         
-        if (editingItem) {
-            const { error } = await supabase.from('tecnicos').update(formData).eq('id', editingItem.id);
-            if (error) {
-                toast.error('Error al actualizar: ' + error.message);
-                return;
+        try {
+            if (editingItem) {
+                await update('tecnicos', editingItem.id, formData);
+                toast.success('Técnico actualizado correctamente');
+            } else {
+                await create('tecnicos', formData);
+                toast.success('Técnico creado correctamente');
             }
-            toast.success('Técnico actualizado correctamente');
-        } else {
-            const { error } = await supabase.from('tecnicos').insert([formData]);
-            if (error) {
-                toast.error('Error al crear: ' + error.message);
-                return;
-            }
-            toast.success('Técnico creado correctamente');
+            fetchTecnicos();
+            setIsModalOpen(false);
+        } catch (error) {
+            toast.error('Error al guardar: ' + error.message);
         }
-        
-        fetchTecnicos();
-        setIsModalOpen(false);
     };
 
     const handleDelete = async (id) => {
         if (window.confirm('¿Estás seguro de que deseas eliminar este técnico?')) {
-            const { error } = await supabase.from('tecnicos').delete().eq('id', id);
-            if (error) {
-                toast.error('Error al eliminar: ' + error.message);
-            } else {
+            try {
+                await remove('tecnicos', id);
                 toast.success('Técnico eliminado');
                 fetchTecnicos();
+            } catch (error) {
+                toast.error('Error al eliminar: ' + error.message);
             }
         }
     };
@@ -152,7 +147,7 @@ export default function Tecnicos() {
                                             </div>
                                             <div>
                                                 <p className="font-bold text-gray-900">{item.nombre} {item.apellidos}</p>
-                                                <p className="text-xs text-gray-400">ID: {item.id.slice(0, 8)}</p>
+                                                <p className="text-xs text-gray-400">ID: {String(item.id).slice(0, 8)}</p>
                                             </div>
                                         </div>
                                     </td>

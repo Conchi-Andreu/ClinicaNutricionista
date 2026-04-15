@@ -9,7 +9,7 @@ import {
     Plus,
     Settings
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { getAll, update } from '../../lib/database';
 import { useAuth } from '../../auth/AuthContext';
 import Button from '../../components/Button';
 import { Link } from 'react-router-dom';
@@ -42,27 +42,33 @@ export default function Dashboard() {
 
     const fetchDashboardData = async () => {
         setIsLoading(true);
-        const [citasRes, tecRes, cenRes, pacRes, slotsRes, tiposRes] = await Promise.all([
-            supabase.from('citas').select('*'),
-            supabase.from('tecnicos').select('*'),
-            supabase.from('centros_salas').select('*'),
-            supabase.from('pacientes').select('*'),
-            supabase.from('disponibilidad_slots').select('tecnico_id,estado'),
-            supabase.from('tipos_visita').select('*')
-        ]);
-        
-        setAllCitas(citasRes.data || []);
-        setTecnicosList(tecRes.data || []);
-        setCentrosList(cenRes.data || []);
-        setPacientesList(pacRes.data || []);
-        setSlotsList(slotsRes.data || []);
-        setTiposList(tiposRes.data || []);
-        setIsLoading(false);
+        try {
+            const [citas, tec, cen, pac, slots, tipos] = await Promise.all([
+                getAll('citas'),
+                getAll('tecnicos'),
+                getAll('centros_salas'),
+                getAll('pacientes'),
+                getAll('disponibilidad_slots'),
+                getAll('tipos_visita')
+            ]);
+            
+            setAllCitas(citas || []);
+            setTecnicosList(tec || []);
+            setCentrosList(cen || []);
+            setPacientesList(pac || []);
+            setSlotsList(slots || []);
+            setTiposList(tipos || []);
+        } catch (error) {
+            console.error('Error fetching dashboard data:', error);
+            toast.error('Error al actualizar datos del panel');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const currentTecnicoId = useMemo(() => {
         if (user?.rol !== 'tecnico') return null;
-        const tec = tecnicosList.find(t => t.usuario_id === user.id || t.email === user.email);
+        const tec = tecnicosList.find(t => String(t.usuario_id) === String(user.id) || t.email === user.email);
         return tec?.id;
     }, [user, tecnicosList]);
 
@@ -107,8 +113,8 @@ export default function Dashboard() {
 
         return filtered.slice(0, 5).map(cita => ({
             ...cita,
-            paciente: (pacientesList || []).find(p => p.id === cita?.paciente_id || p.usuario_id === cita?.paciente_id),
-            tipo: (tiposList || []).find(t => t.id === cita?.tipo_visita_id)
+            paciente: (pacientesList || []).find(p => String(p.id) === String(cita?.paciente_id) || String(p.usuario_id) === String(cita?.paciente_id)),
+            tipo: (tiposList || []).find(t => String(t.id) === String(cita?.tipo_visita_id))
         }));
     }, [currentTecnicoId, allCitas, pacientesList, tiposList]);
 
@@ -130,11 +136,14 @@ export default function Dashboard() {
     };
 
     const handleSaveNotes = async () => {
-        const { error } = await supabase.from('citas').update({ notas_visita: visitNotes }).eq('id', selectedCita.id);
-        if (error) { toast.error(error.message); return; }
-        setIsNotesModalOpen(false);
-        toast.success('Datos de la visita guardados correctamente');
-        fetchDashboardData();
+        try {
+            await update('citas', selectedCita.id, { notas_visita: visitNotes });
+            setIsNotesModalOpen(false);
+            toast.success('Datos de la visita guardados correctamente');
+            fetchDashboardData();
+        } catch (error) {
+            toast.error(error.message || 'Error al guardar notas');
+        }
     };
 
     return (

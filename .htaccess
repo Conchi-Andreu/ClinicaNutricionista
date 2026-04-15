@@ -1,0 +1,10 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /Programacion/
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_URI} !^/Programacion/backend/
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_FILENAME} !-l
+  RewriteRule . /Programacion/index.html [L]
+</IfModule>

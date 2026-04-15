@@ -27,8 +27,9 @@ export default function Register() {
     const validatePassword = (pass) => {
         const hasUpper = /[A-Z]/.test(pass);
         const hasNumber = /[0-9]/.test(pass);
-        const hasSpecial = /[!@#$%^&*(),.?":{}|<>_-]/.test(pass);
-        return pass.length >= 8 && hasUpper && hasNumber && hasSpecial;
+        // Usamos una regex más inclusiva para símbolos: cualquier cosa que no sea letra o número
+        const hasSymbol = /[^A-Za-z0-9]/.test(pass);
+        return pass.length >= 8 && hasUpper && hasNumber && hasSymbol;
     };
 
     const handleSubmit = async (e) => {
@@ -69,14 +70,14 @@ export default function Register() {
                     <div className="w-20 h-20 bg-primary-100 text-primary-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner">
                         <Mail size={40} />
                     </div>
-                    <h2 className="text-3xl font-extrabold text-gray-900 mb-4">¡Casi listo!</h2>
+                    <h2 className="text-3xl font-extrabold text-gray-900 mb-4">¡Registro completado!</h2>
                     <p className="text-gray-500 font-medium leading-relaxed mb-8">
-                        Hemos enviado un enlace de confirmación a <span className="text-primary-600 font-bold">{formData.email}</span>.
-                        Por favor, haz clic en el enlace para activar tu cuenta.
+                        Hemos enviado un email de bienvenida a <span className="text-primary-600 font-bold">{formData.email}</span>.
+                        Ya puedes acceder a tu cuenta y empezar a gestionar tus citas.
                     </p>
                     <div className="bg-primary-50 rounded-2xl p-6 border border-primary-100 text-left mb-8">
-                        <p className="text-sm text-primary-900 mb-4">
-                            Busca en tu bandeja de entrada un correo nuestro con el enlace de activación. 
+                        <p className="text-sm text-primary-900 mb-0">
+                            Te hemos enviado los detalles de acceso y bienvenida a tu correo. 
                             Si no lo encuentras en unos minutos, revisa tu carpeta de Spam.
                         </p>
                     </div>

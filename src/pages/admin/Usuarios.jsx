@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Shield, User as UserIcon, ShieldCheck, Mail, Phone, Calendar } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { getAll, create, update, remove } from '../../lib/database';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
 import Input from '../../components/Input';
@@ -16,7 +16,7 @@ export default function Usuarios() {
     const [tecnicoData, setTecnicoData] = useState({ especialidad: '' });
 
     const loadData = async () => {
-        const { data } = await supabase.from('usuarios').select('*');
+        const data = await getAll('usuarios');
         setUsuarios(data || []);
     };
 
@@ -26,7 +26,9 @@ export default function Usuarios() {
 
     const handleOpenEdit = async (user) => {
         setEditingUser({ ...user });
-        const { data: tec } = await supabase.from('tecnicos').select('*').eq('usuario_id', user.id).single();
+        // Usamos filtro por usuario_id en la API
+        const tecs = await getAll(`tecnicos&usuario_id=${user.id}`);
+        const tec = tecs && tecs.length > 0 ? tecs[0] : null;
         setTecnicoData(tec ? { ...tec } : { especialidad: '' });
         setIsModalOpen(true);
     };
@@ -34,20 +36,21 @@ export default function Usuarios() {
     const handleSaveUser = async (e) => {
         e.preventDefault();
 
-        // 1. Update basic user data
-        const userUpdateData = {
-            nombre: editingUser.nombre,
-            apellidos: editingUser.apellidos,
-            rol: editingUser.rol,
-            email: editingUser.email
-        };
+        try {
+            // 1. Update basic user data
+            const userUpdateData = {
+                nombre: editingUser.nombre,
+                apellidos: editingUser.apellidos,
+                rol: editingUser.rol,
+                email: editingUser.email
+            };
 
-        const { error: userError } = await supabase.from('usuarios').update(userUpdateData).eq('id', editingUser.id);
+            await update('usuarios', editingUser.id, userUpdateData);
 
-        if (!userError) {
             // 2. Handle tecnico specific logic
             if (editingUser.rol === 'tecnico') {
-                const { data: existingTec } = await supabase.from('tecnicos').select('id').eq('usuario_id', editingUser.id).single();
+                const tecs = await getAll(`tecnicos&usuario_id=${editingUser.id}`);
+                const existingTec = tecs && tecs.length > 0 ? tecs[0] : null;
 
                 const techRecord = {
                     ...tecnicoData,
@@ -58,17 +61,17 @@ export default function Usuarios() {
                 };
 
                 if (existingTec) {
-                    await supabase.from('tecnicos').update(techRecord).eq('id', existingTec.id);
+                    await update('tecnicos', existingTec.id, techRecord);
                 } else {
-                    await supabase.from('tecnicos').insert([techRecord]);
+                    await create('tecnicos', techRecord);
                 }
             }
 
             loadData();
             setIsModalOpen(false);
             toast.success('Usuario actualizado correctamente');
-        } else {
-            toast.error(userError.message);
+        } catch (error) {
+            toast.error(error.message || 'Error al guardar los cambios');
         }
     };
 

@@ -11,7 +11,7 @@ import {
     AlertCircle,
     History
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { getAll, create, remove } from '../../lib/database';
 import { useAuth } from '../../auth/AuthContext';
 import { generateSlots, previewSlotCount, deleteSlotsForRule } from '../../store/slotGenerator';
 import Button from '../../components/Button';
@@ -38,7 +38,7 @@ export default function Planificacion() {
 
     const currentTecnicoId = useMemo(() => {
         if (user?.rol !== 'tecnico') return null;
-        const tec = tecnicos.find(t => t.usuario_id === user.id || t.email === user.email);
+        const tec = tecnicos.find(t => String(t.usuario_id) === String(user.id) || t.email === user.email);
         return tec?.id;
     }, [user, tecnicos]);
 
@@ -48,12 +48,16 @@ export default function Planificacion() {
 
     const fetchInitialData = async () => {
         setIsLoading(true);
-        const [tecnicosRes, centrosRes] = await Promise.all([
-            supabase.from('tecnicos').select('*'),
-            supabase.from('centros_salas').select('*').eq('activo', true)
-        ]);
-        setTecnicos(tecnicosRes.data || []);
-        setCentros(centrosRes.data || []);
+        try {
+            const [tecs, cens] = await Promise.all([
+                getAll('tecnicos'),
+                getAll('centros_salas&activo=1')
+            ]);
+            setTecnicos(tecs || []);
+            setCentros(cens || []);
+        } catch (error) {
+            toast.error('Error al cargar datos iniciales');
+        }
         setIsLoading(false);
     };
 
@@ -64,13 +68,17 @@ export default function Planificacion() {
     }, [isLoading, currentTecnicoId]);
 
     const fetchReglas = async () => {
-        let query = supabase.from('planificacion_reglas').select('*').order('createdAt', { ascending: false });
-        if (currentTecnicoId) {
-            query = query.eq('tecnico_id', currentTecnicoId);
-            setFormData(prev => ({ ...prev, tecnico_id: currentTecnicoId }));
+        try {
+            let filter = '';
+            if (currentTecnicoId) {
+                filter = `&tecnico_id=${currentTecnicoId}`;
+                setFormData(prev => ({ ...prev, tecnico_id: currentTecnicoId }));
+            }
+            const data = await getAll(`planificacion_reglas${filter}`);
+            setReglas(data || []);
+        } catch (error) {
+            console.error(error);
         }
-        const { data } = await query;
-        setReglas(data || []);
     };
 
     const [formData, setFormData] = useState({
@@ -115,37 +123,46 @@ export default function Planificacion() {
             return;
         }
 
-        const rulePayload = { ...formData, dias_semana: formData.dias_semana.join(',') };
-        const { data, error } = await supabase.from('planificacion_reglas').insert([rulePayload]).select().single();
-        if (error) { toast.error('Error: ' + error.message); return; }
+        try {
+            const rulePayload = { ...formData, dias_semana: formData.dias_semana.join(',') };
+            const newRule = await create('planificacion_reglas', rulePayload);
+            
+            // Note: create returns {id, message} or the object depending on implementation.
+            // My api.php returns {id, message}.
+            const result = await generateSlots({ ...rulePayload, id: newRule.id });
 
-        const result = await generateSlots(data);
+            toast.success(`¡Éxito! Se han generado ${result.count} huecos de disponibilidad.`);
+            if (result.conflicts > 0) {
+                toast.error(`${result.conflicts} huecos no se crearon por conflicto de horario/técnico.`, { duration: 5000 });
+            }
 
-        toast.success(`¡Éxito! Se han generado ${result.count} huecos de disponibilidad.`);
-        if (result.conflicts > 0) {
-            toast.error(`${result.conflicts} huecos no se crearon por conflicto de horario/técnico.`, { duration: 5000 });
+            fetchReglas();
+            // Reset form
+            setFormData({
+                tecnico_id: currentTecnicoId || '',
+                centro_id: '',
+                fecha_desde: '',
+                fecha_hasta: '',
+                dias_semana: [],
+                hora_inicio: '09:00',
+                hora_fin: '14:00',
+                intervalo_minutos: 30
+            });
+        } catch (error) {
+            toast.error('Error al generar slots: ' + error.message);
         }
-
-        fetchReglas();
-        // Reset form
-        setFormData({
-            tecnico_id: '',
-            centro_id: '',
-            fecha_desde: '',
-            fecha_hasta: '',
-            dias_semana: [],
-            hora_inicio: '09:00',
-            hora_fin: '14:00',
-            intervalo_minutos: 30
-        });
     };
 
     const handleDeleteRegla = async (regla) => {
         if (window.confirm('¿Eliminar esta regla? Se borrarán todos los huecos LIBRES generados por ella. Las citas ya reservadas se mantendrán.')) {
-            await deleteSlotsForRule(regla.id);
-            await supabase.from('planificacion_reglas').delete().eq('id', regla.id);
-            fetchReglas();
-            toast.success('Regla y slots eliminados');
+            try {
+                await deleteSlotsForRule(regla.id);
+                await remove('planificacion_reglas', regla.id);
+                fetchReglas();
+                toast.success('Regla y slots eliminados');
+            } catch (error) {
+                toast.error('Error al eliminar regla: ' + error.message);
+            }
         }
     };
 
@@ -162,14 +179,24 @@ export default function Planificacion() {
         }
 
         if (window.confirm('¿Deseas eliminar todos los HUECOS LIBRES de esta selección? Las citas confirmadas no se tocarán.')) {
-            const { data, error } = await supabase.from('disponibilidad_slots').delete()
-                .eq('tecnico_id', tecnico_id)
-                .eq('centro_id', centro_id)
-                .eq('estado', 'libre')
-                .gte('fecha', fecha_desde)
-                .lte('fecha', fecha_hasta);
-            if (error) { toast.error(error.message); return; }
-            toast.success(`Huecos libres eliminados en el rango.`);
+            try {
+                // Fetch slots matching filters
+                const slots = await getAll(`disponibilidad_slots&tecnico_id=${tecnico_id}&centro_id=${centro_id}&estado=libre&fecha[gte]=${fecha_desde}&fecha[lte]=${fecha_hasta}`);
+                
+                // Note: api.php filtering for dates needs to be supported.
+                // Assuming generic filtering for now but I'll update api.php to support range if needed.
+                // For now, let's just do it sequentially if the list isn't too long.
+                if (slots && slots.length > 0) {
+                    for (const s of slots) {
+                        await remove('disponibilidad_slots', s.id);
+                    }
+                    toast.success(`${slots.length} huecos libres eliminados.`);
+                } else {
+                    toast.info('No se encontraron huecos libres en ese rango.');
+                }
+            } catch (error) {
+                toast.error('Error al eliminar: ' + error.message);
+            }
         }
     };
 

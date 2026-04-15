@@ -14,7 +14,7 @@ import {
     Trash2,
     X
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { getAll, update, remove } from '../../lib/database';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import Badge from '../../components/Badge';
@@ -44,18 +44,21 @@ export default function Pacientes() {
 
     const fetchData = async () => {
         setIsLoading(true);
-        const [pacientesRes, citasRes, centrosRes] = await Promise.all([
-            supabase.from('pacientes').select('*').order('createdAt', { ascending: false }),
-            supabase.from('citas').select('*'),
-            supabase.from('centros_salas').select('*')
-        ]);
-        
-        if (pacientesRes.error) toast.error('Error cargando pacientes: ' + pacientesRes.error.message);
-        
-        setItems(pacientesRes.data || []);
-        setCitasList(citasRes.data || []);
-        setCentrosList(centrosRes.data || []);
-        setIsLoading(false);
+        try {
+            const [pacientes, citas, centros] = await Promise.all([
+                getAll('pacientes'),
+                getAll('citas'),
+                getAll('centros_salas')
+            ]);
+            
+            setItems(pacientes || []);
+            setCitasList(citas || []);
+            setCentrosList(centros || []);
+        } catch (error) {
+            toast.error('Error cargando datos: ' + error.message);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const patients = useMemo(() => {
@@ -66,7 +69,7 @@ export default function Pacientes() {
 
         return allPatients.map(paciente => {
             const patientCitas = allCitas.filter(c =>
-                (c.paciente_id === paciente.id || c.paciente_id === paciente.usuario_id)
+                (String(c.paciente_id) === String(paciente.id) || String(c.paciente_id) === String(paciente.usuario_id))
             );
 
             const pendingCount = patientCitas.filter(c => c.estado === 'confirmada').length;
@@ -77,7 +80,7 @@ export default function Pacientes() {
 
             let nextVisitInfo = null;
             if (nextCita) {
-                const centro = allCentros.find(cen => cen.id === nextCita.centro_id);
+                const centro = allCentros.find(cen => String(cen.id) === String(nextCita.centro_id));
                 nextVisitInfo = {
                     fecha: nextCita.fecha_hora_inicio.split('T')[0],
                     hora: nextCita.fecha_hora_inicio.split('T')[1].slice(0, 5),
@@ -119,12 +122,12 @@ export default function Pacientes() {
 
     const handleDelete = async (id) => {
         if (window.confirm('¿Estás seguro de que deseas eliminar este paciente?')) {
-            const { error } = await supabase.from('pacientes').delete().eq('id', id);
-            if (error) {
-                toast.error('Error al eliminar: ' + error.message);
-            } else {
+            try {
+                await remove('pacientes', id);
                 toast.success('Paciente eliminado correctamente');
                 fetchData();
+            } catch (error) {
+                toast.error('Error al eliminar: ' + error.message);
             }
         }
         setOpenMenuId(null);
@@ -132,14 +135,14 @@ export default function Pacientes() {
 
     const handleSaveEdit = async (e) => {
         e.preventDefault();
-        const { error } = await supabase.from('pacientes').update(formData).eq('id', editingItem.id);
-        if (error) {
+        try {
+            await update('pacientes', editingItem.id, formData);
+            toast.success('Datos del paciente actualizados');
+            setIsEditModalOpen(false);
+            fetchData();
+        } catch (error) {
             toast.error('Error al guardar: ' + error.message);
-            return;
         }
-        toast.success('Datos del paciente actualizados');
-        setIsEditModalOpen(false);
-        fetchData();
     };
 
     return (

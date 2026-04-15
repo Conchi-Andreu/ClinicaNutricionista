@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { getById } from '../lib/database';
 
 const SiteConfigContext = createContext(null);
 
@@ -10,16 +10,11 @@ export function SiteConfigProvider({ children }) {
     const fetchConfig = async () => {
         try {
             setLoading(true);
-            const { data, error } = await supabase
-                .from('site_config')
-                .select('*')
-                .eq('id', 'global-config')
-                .single();
+            const data = await getById('site_config', 'global-config');
 
-            if (error) throw error;
             if (data) setConfig(data);
         } catch (error) {
-            console.error('Error fetching site_config from Supabase:', error);
+            console.error('Error fetching site_config from API:', error);
             // Fallback to empty to avoid crashing the app
             setConfig({});
         } finally {

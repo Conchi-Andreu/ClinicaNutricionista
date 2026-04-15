@@ -17,7 +17,7 @@ import {
     FileEdit,
     DollarSign
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { getAll, update } from '../../lib/database';
 import { useAuth } from '../../auth/AuthContext';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
@@ -57,52 +57,54 @@ export default function Citas() {
 
     const fetchData = async () => {
         setIsLoading(true);
-        const [citasRes, pacRes, tecRes, cenRes, tiposRes] = await Promise.all([
-            supabase.from('citas').select('*'),
-            supabase.from('pacientes').select('*'),
-            supabase.from('tecnicos').select('*'),
-            supabase.from('centros_salas').select('*'),
-            supabase.from('tipos_visita').select('*')
-        ]);
-        
-        setCitasList(citasRes.data || []);
-        setPacientesList(pacRes.data || []);
-        
-        const loadedTecnicos = tecRes.data || [];
-        setTecnicosList(loadedTecnicos);
-        
-        setCentrosList(cenRes.data || []);
-        setTiposList(tiposRes.data || []);
-        
-        // Auto-assign tech filter if it's a technical user
-        if (user?.rol === 'tecnico') {
-             const found = loadedTecnicos.find(t => t.usuario_id === user.id || t.email === user.email);
-             if (found) setFilterTecnico(found.id);
+        try {
+            const [citas, pac, tec, cen, tipos] = await Promise.all([
+                getAll('citas'),
+                getAll('pacientes'),
+                getAll('tecnicos'),
+                getAll('centros_salas'),
+                getAll('tipos_visita')
+            ]);
+            
+            setCitasList(citas || []);
+            setPacientesList(pac || []);
+            setTecnicosList(tec || []);
+            setCentrosList(cen || []);
+            setTiposList(tipos || []);
+            
+            // Auto-assign tech filter if it's a technical user
+            if (user?.rol === 'tecnico') {
+                 const found = tec?.find(t => String(t.usuario_id) === String(user.id) || t.email === user.email);
+                 if (found) setFilterTecnico(found.id);
+            }
+        } catch (error) {
+            console.error('Error fetching data:', error);
+            toast.error('Error al cargar datos desde el servidor.');
+        } finally {
+            setIsLoading(false);
         }
-        
-        setIsLoading(false);
     };
 
     const pacienteIdFilter = searchParams.get('pacienteId');
     const filteredPaciente = useMemo(() => {
         if (!pacienteIdFilter) return null;
-        return pacientesList.find(p => p.id === pacienteIdFilter || p.usuario_id === pacienteIdFilter);
+        return pacientesList.find(p => String(p.id) === String(pacienteIdFilter) || String(p.usuario_id) === String(pacienteIdFilter));
     }, [pacienteIdFilter, pacientesList]);
 
     const data = useMemo(() => {
         return (citasList || []).map(cita => ({
             ...cita,
-            paciente: (pacientesList || []).find(p => p.id === cita?.paciente_id || p.usuario_id === cita?.paciente_id),
-            tecnico: (tecnicosList || []).find(t => t.id === cita?.tecnico_id),
-            centro: (centrosList || []).find(c => c.id === cita?.centro_id),
-            tipo: (tiposList || []).find(t => t.id === cita?.tipo_visita_id)
+            paciente: (pacientesList || []).find(p => String(p.id) === String(cita?.paciente_id) || String(p.usuario_id) === String(cita?.paciente_id)),
+            tecnico: (tecnicosList || []).find(t => String(t.id) === String(cita?.tecnico_id)),
+            centro: (centrosList || []).find(c => String(c.id) === String(cita?.centro_id)),
+            tipo: (tiposList || []).find(t => String(t.id) === String(cita?.tipo_visita_id))
         })).filter(cita => {
             const nameMatch = `${cita.paciente?.nombre || ''} ${cita.paciente?.apellidos || ''}`.toLowerCase().includes(searchTerm.toLowerCase());
             const estadoMatch = !filterEstado || cita.estado === filterEstado;
-            const patientIdMatch = !pacienteIdFilter || cita.paciente_id === pacienteIdFilter || cita.paciente?.usuario_id === pacienteIdFilter;
+            const patientIdMatch = !pacienteIdFilter || String(cita.paciente_id) === String(pacienteIdFilter) || String(cita.paciente?.usuario_id) === String(pacienteIdFilter);
 
-            const tecnicoMatch = !filterTecnico || cita.tecnico_id === filterTecnico;
-            const centroMatch = !filterCentro || cita.centro_id === filterCentro;
+            const tecnicoMatch = !filterTecnico || String(cita.tecnico_id) === String(filterTecnico);
+            const centroMatch = !filterCentro || String(cita.centro_id) === String(filterCentro);
             const fechaMatch = !filterFecha || (cita.fecha_hora_inicio && cita.fecha_hora_inicio.startsWith(filterFecha));
 
             return nameMatch && estadoMatch && patientIdMatch && tecnicoMatch && centroMatch && fechaMatch;
@@ -110,18 +112,25 @@ export default function Citas() {
     }, [citasList, pacientesList, tecnicosList, centrosList, tiposList, searchTerm, filterEstado, filterFecha, filterCentro, filterTecnico, pacienteIdFilter, user]);
 
     const handleUpdateEstado = async (id, nuevoEstado) => {
-        const { error } = await supabase.from('citas').update({ estado: nuevoEstado }).eq('id', id);
-        if (error) { toast.error(error.message); return; }
-        toast.success(`Cita marcada como ${nuevoEstado}`);
-        fetchData();
+        try {
+            await update('citas', id, { estado: nuevoEstado });
+            toast.success(`Cita marcada como ${nuevoEstado}`);
+            fetchData();
+        } catch (error) {
+            toast.error('Error al actualizar el estado: ' + error.message);
+        }
     };
 
     const handleTogglePago = async (cita) => {
         const nuevoEstadoPago = !cita.pagado;
-        const { error } = await supabase.from('citas').update({ pagado: nuevoEstadoPago }).eq('id', cita.id);
-        if (error) { toast.error(error.message); return; }
-        toast.success(nuevoEstadoPago ? 'Cita marcada como PAGADA' : 'Cita marcada como PENDIENTE DE PAGO');
-        fetchData();
+        try {
+            // La API espera un valor booleano o 1/0 según DB
+            await update('citas', cita.id, { pagado: nuevoEstadoPago ? 1 : 0 });
+            toast.success(nuevoEstadoPago ? 'Cita marcada como PAGADA' : 'Cita marcada como PENDIENTE DE PAGO');
+            fetchData();
+        } catch (error) {
+            toast.error('Error al actualizar el pago: ' + error.message);
+        }
     };
 
     const handleOpenNotes = (cita) => {
@@ -134,7 +143,7 @@ export default function Citas() {
         if (!selectedCita?.paciente_id) return [];
         return citasList
             .filter(c =>
-                (c.paciente_id === selectedCita.paciente_id) &&
+                (String(c.paciente_id) === String(selectedCita.paciente_id)) &&
                 c.notas_visita &&
                 c.id !== selectedCita.id
             )
@@ -142,12 +151,15 @@ export default function Citas() {
     }, [selectedCita, citasList]);
 
     const handleSaveNotes = async () => {
-        const { error } = await supabase.from('citas').update({ notas_visita: visitNotes }).eq('id', selectedCita.id);
-        if (error) { toast.error(error.message); return; }
-        setSelectedCita(prev => ({ ...prev, notas_visita: visitNotes }));
-        toast.success('Datos de la visita guardados correctamente');
-        setIsNotesModalOpen(false);
-        fetchData();
+        try {
+            await update('citas', selectedCita.id, { notas_visita: visitNotes });
+            setSelectedCita(prev => ({ ...prev, notas_visita: visitNotes }));
+            toast.success('Datos de la visita guardados correctamente');
+            setIsNotesModalOpen(false);
+            fetchData();
+        } catch (error) {
+            toast.error('Error al guardar notas: ' + error.message);
+        }
     };
 
     const handleViewDetails = (cita) => {
